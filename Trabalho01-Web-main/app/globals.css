@@ -1,0 +1,6 @@
+@import "tailwindcss";
+
+/* Liga o modo escuro pela classe "dark" no <html>.
+   Sem essa linha, o Tailwind usaria a configuração do sistema
+   operacional e a gente não conseguiria trocar pelo botão. */
+@custom-variant dark (&:where(.dark, .dark *));
