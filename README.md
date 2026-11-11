@@ -246,7 +246,7 @@ backend/
 | `DB_PATH` | Arquivo do SQLite | `./dados/tecshop.sqlite` |
 | `JWT_SECRET` | Segredo do JWT (mínimo 32 caracteres) | gere com o comando abaixo |
 | `JWT_EXPIRES_IN` | Validade do token, sempre com unidade (só o número seria lido como milissegundos, e a API não sobe) | `1h` |
-| `ADMIN_NOME` / `ADMIN_EMAIL` / `ADMIN_PASSWORD` | Conta admin criada pelo seed | `admin@tecshop.com` / `admin123` |
+| `ADMIN_NOME` / `ADMIN_EMAIL` / `ADMIN_PASSWORD` | Conta admin criada pelo seed (a senha vem vazia no modelo: defina a sua) | `admin@tecshop.com` / senha à sua escolha |
 | `FRONTEND_URL` | Origem liberada no CORS | `http://localhost:3000` |
 | `SWAGGER_ENABLED` | Opcional. Sem ela, o `/docs` fica ligado em desenvolvimento e desligado em produção | `true` ou `false` |
 
@@ -269,7 +269,7 @@ Requisito: Node.js 20 ou superior (testado com Node 24).
 # 1) back-end
 cd backend
 npm install
-cp .env.example .env          # e preencha JWT_SECRET
+cp .env.example .env          # e preencha JWT_SECRET e ADMIN_PASSWORD
 npm run seed                  # cria admin, categorias, 20 produtos, avaliações e feedbacks
 npm run start:dev             # API em http://localhost:3001 (Swagger em /docs)
 
@@ -280,7 +280,7 @@ cp .env.example .env.local    # API_URL e o mesmo JWT_SECRET do backend
 npm run dev                   # loja em http://localhost:3000
 ```
 
-**Conta administrativa de demonstração:** `admin@tecshop.com` / `admin123`. A senha vem do `.env` e é gravada só como hash. Em produção, o seed recusa essa senha.
+**Conta administrativa:** o e-mail de `ADMIN_EMAIL` (`admin@tecshop.com`) com a senha que você definir em `ADMIN_PASSWORD`. A senha fica só no `.env`, que não vai para o Git, e no banco é gravada só como hash. Sem senha definida, o seed não cria o admin e avisa. Em produção, o seed recusa a senha de demonstração `admin123`.
 
 O seed pode rodar quantas vezes for preciso sem duplicar nada:
 
@@ -306,7 +306,7 @@ Outros comandos do back-end:
 ## Swagger UI: como usar
 
 1. Com a API rodando, abra **http://localhost:3001/docs**.
-2. Em **Autenticação → POST /auth/login**, clique em **Try it out**, envie `{ "email": "admin@tecshop.com", "senha": "admin123" }` e clique em **Execute**.
+2. Em **Autenticação → POST /auth/login**, clique em **Try it out**, envie `{ "email": "admin@tecshop.com", "senha": "<a senha do ADMIN_PASSWORD>" }` e clique em **Execute**.
 3. Copie o valor de `dados.token` da resposta.
 4. Clique em **Authorize** (cadeado no topo), cole **só o token** (o Swagger acrescenta `Bearer` sozinho) e confirme.
 5. As rotas com cadeado passam a funcionar, até as **[ADMIN]**. Para testar como cliente, crie uma conta em `POST /auth/registro` e use o token dela: as rotas de admin respondem 403.

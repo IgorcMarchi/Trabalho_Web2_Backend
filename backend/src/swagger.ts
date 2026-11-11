@@ -10,7 +10,7 @@ API da **TecShop**, a loja da primeira etapa, agora com back-end próprio
 
 ### Como testar por aqui
 1. Abra **Autenticação → POST /auth/login**, clique em **Try it out** e envie
-   \`{ "email": "admin@tecshop.com", "senha": "admin123" }\` (conta de demonstração criada pelo seed).
+   \`{ "email": "admin@tecshop.com", "senha": "..." }\` com a senha definida em ADMIN_PASSWORD no .env (conta criada pelo seed).
 2. Copie o valor de \`dados.token\` da resposta.
 3. Clique em **Authorize** (cadeado no topo), cole **só o token** e confirme.
    O Swagger envia sozinho o cabeçalho \`Authorization: Bearer <token>\`.

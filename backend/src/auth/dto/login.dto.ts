@@ -10,7 +10,7 @@ export class LoginDto {
   @IsEmail({}, { message: 'email deve ser um e-mail válido' })
   email: string;
 
-  @ApiProperty({ example: 'admin123' })
+  @ApiProperty({ example: 'sua-senha' })
   @IsString({ message: 'senha deve ser um texto' })
   @IsNotEmpty({ message: 'senha é obrigatória' })
   @MaxLength(72)

@@ -8,8 +8,8 @@ A documentação completa (arquitetura, endpoints, relacionamentos, testes e lim
 
 ```bash
 npm install
-cp .env.example .env      # preencha JWT_SECRET (mínimo 32 caracteres)
-npm run seed              # admin@tecshop.com / admin123, 4 categorias, 20 produtos...
+cp .env.example .env      # preencha JWT_SECRET (mínimo 32 caracteres) e ADMIN_PASSWORD
+npm run seed              # admin (ADMIN_EMAIL / ADMIN_PASSWORD), 4 categorias, 20 produtos...
 npm run start:dev         # http://localhost:3001  |  Swagger: http://localhost:3001/docs
 ```
 
