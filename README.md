@@ -56,7 +56,7 @@ Cada assunto tem a própria pasta, com módulo, controller, service, repository,
 | Como os dados são guardados | não | não | sim |
 
 - **Controller fino**: recebe a requisição já validada pelo DTO e faz uma chamada ao service.
-- **Service**: aplica as regras (estoque, transições de status, dono do recurso, preço promocional menor que o normal) e lança as exceções do Nest (`NotFoundException`, `ConflictException`…). Um service pede ao outro e nunca mexe no repository dos outros. Por exemplo, pedidos e carrinho usam o `ProdutosService`.
+- **Service**: aplica as regras (estoque, transições de status, dono do recurso, preço promocional menor que o normal) e lança as exceções do Nest (`NotFoundException`, `ConflictException`…). Um service pede ao outro e nunca mexe no repository dos outros. Por exemplo, pedidos e carrinho usam o `ProdutosService`. (Alguns repositories leem tabelas de outros assuntos com join, como as contagens por categoria e os relatórios, para não cair no N+1; mas nenhum service injeta o repository de outro módulo.)
 - **Repository**: só consulta e grava. Devolve `null` quando não acha, e o service transforma isso em 404. Filtros, ordenação e paginação são feitos no banco (`findAndCount`, `ILike`, `QueryBuilder`).
 - **Injeção de dependência** pelo construtor em todos os pontos, sem `new`.
 
@@ -96,7 +96,7 @@ erDiagram
 ### 5.3 API REST, DTOs e respostas padronizadas
 
 - Recursos no plural e em minúsculas. O método HTTP é o verbo: GET consulta, POST cria, PATCH altera parte, DELETE remove (204).
-- **DTO em todo body e toda query**, com `class-validator`/`class-transformer`. O `ValidationPipe` global usa `whitelist`, `forbidNonWhitelisted` e `transform`: campo que não está no DTO é recusado com 400.
+- **DTO em todo body e toda query**, com `class-validator`/`class-transformer`. O `ValidationPipe` global usa `whitelist`, `forbidNonWhitelisted` e `transform`: campo que não está no DTO é recusado com 400. No PATCH (`PartialType` com `skipNullProperties: false`), campo ausente pode, mas campo `null` também é recusado com 400. Só o `precoPromocional` aceita `null`, que quer dizer "sem promoção".
 - **Paginação** com limite máximo de 50: `{ itens, meta: { total, pagina, limite, paginas } }`.
 - **Envelope único**:
   - sucesso: `{ "sucesso": true, "dados": ... }` (`RespostaInterceptor`);
@@ -129,7 +129,7 @@ erDiagram
   - O JWT fica num **cookie `httpOnly`** (`secure` em produção, `sameSite=lax`), que o JavaScript da página não consegue ler.
   - Não existe nenhuma variável `NEXT_PUBLIC_`: a URL da API e o segredo só existem no servidor do Next.
 - **`proxy.js`** agora confere a **assinatura e a validade** do JWT (HMAC SHA-256 com o mesmo `JWT_SECRET`, usando a Web Crypto do Node) antes de abrir as páginas privadas. Um token falso ou vencido volta para o login.
-- **Estado no lugar certo**, como pede a skill da disciplina:
+- **Estado no lugar certo**:
   - ficaram em Context só os estados globais de interface: tema, sessão, carrinho e lista de desejos;
   - produtos, pedidos, promoções e avaliações são dados do servidor, e cada página busca o que precisa pelo hook `useRequisicao` (estados de carregando, erro com "Tentar de novo", vazio e sucesso);
   - a busca usa `useDebounce` para não disparar uma requisição a cada letra.
@@ -151,10 +151,12 @@ erDiagram
 | Checkout / meus pedidos | `POST /pedidos`, `GET /pedidos/meus` |
 | Lista de desejos | `GET`, `POST /lista-desejos`, `DELETE /lista-desejos/:produtoId` |
 | Feedback do site | `GET /feedbacks`, `POST /feedbacks` |
-| Painel: dashboard e relatórios | `GET /relatorios/dashboard`, `GET /relatorios/vendas`, `GET /usuarios` |
+| Painel: dashboard e relatórios | `GET /relatorios/dashboard`, `GET /relatorios/vendas` |
 | Painel: produtos e categorias | `GET/POST/PATCH/DELETE /produtos`, `/categorias` |
 | Painel: pedidos | `GET /pedidos`, `GET /pedidos/:id`, `PATCH /pedidos/:id/status` |
 | Painel: promoções e moderação | `/promocoes`, `DELETE /avaliacoes/:id`, `DELETE /feedbacks/:id` |
+
+`GET /usuarios` e `PATCH /usuarios/:id` não têm tela no painel: servem para consultar e desativar contas pelo Swagger.
 
 ## 6. Juntando tudo: o fluxo de uma compra
 
@@ -188,6 +190,7 @@ erDiagram
 - **Devolver o hash da senha**: `select: false` e o usuário é sempre recarregado sem o hash.
 - **Duas compras levarem a última unidade**: a condição de estoque fica dentro do próprio `UPDATE`.
 - **N+1**: as contagens por categoria usam `GROUP BY` e as relações vêm com `relations`.
+- **Paginar com join ordenando pelos itens**: com `skip`/`take`, o TypeORM passaria a contar linhas pedido×item, e pedidos sumiriam da lista. O SQL ordena só pelo pedido, e os itens são ordenados depois da consulta.
 - **`synchronize` em produção**: fica desligado lá, e quem cria as tabelas é a migration.
 - **Token no `localStorage`**: ele fica em cookie httpOnly.
 
@@ -242,10 +245,10 @@ backend/
 | `NODE_ENV` | `development` ou `production` | `development` |
 | `DB_PATH` | Arquivo do SQLite | `./dados/tecshop.sqlite` |
 | `JWT_SECRET` | Segredo do JWT (mínimo 32 caracteres) | gere com o comando abaixo |
-| `JWT_EXPIRES_IN` | Validade do token | `1h` |
+| `JWT_EXPIRES_IN` | Validade do token, sempre com unidade (só o número seria lido como milissegundos, e a API não sobe) | `1h` |
 | `ADMIN_NOME` / `ADMIN_EMAIL` / `ADMIN_PASSWORD` | Conta admin criada pelo seed | `admin@tecshop.com` / `admin123` |
 | `FRONTEND_URL` | Origem liberada no CORS | `http://localhost:3000` |
-| `SWAGGER_ENABLED` | Liga/desliga o `/docs` | `true` |
+| `SWAGGER_ENABLED` | Opcional. Sem ela, o `/docs` fica ligado em desenvolvimento e desligado em produção | `true` ou `false` |
 
 Gerar um segredo: `node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"`
 
@@ -294,9 +297,9 @@ Outros comandos do back-end:
 | `npm run build` / `npm run start:prod` | Compila / roda o build |
 | `npm test` | Testes unitários dos services |
 | `npm run test:e2e` | Testes de integração (sobem a API com um banco temporário) |
-| `npm run lint` | ESLint + Prettier |
+| `npm run lint` | ESLint + Prettier (com `--fix`: já corrige a formatação nos arquivos) |
 | `npm run seed:prod` | Seed usando o build (`dist/`) |
-| `npm run migration:gerar -- src/database/migrations/Nome` | Gera migration a partir das entidades |
+| `npm run migration:gerar -- src/database/migrations/Nome` | Gera migration a partir das entidades (contra um banco criado só pelas migrations; ver `src/database/data-source.ts`) |
 
 **Produção:** `NODE_ENV=production` desliga o `synchronize` e roda as migrations ao subir. O Swagger fica desligado (a não ser com `SWAGGER_ENABLED=true`) e o cookie do token passa a ser `secure`.
 
@@ -355,17 +358,18 @@ Legenda de acesso: **Público** (sem token), **Logado** (CLIENTE ou ADMIN), **AD
 
 ## Testes executados
 
-Executados em 11/11/2026 neste ambiente (Windows 10, Node 24). Todos passaram.
+Executados em 11/11/2026. Todos passaram. As linhas marcadas com "(equipe)" são da verificação feita antes da revisão do código; as demais foram executadas de novo depois das correções.
 
 | Suíte | Ferramenta | Resultado |
 |---|---|---|
-| Testes unitários dos services (pedidos, auth, produtos, categorias, promoções) | Jest, dependências falsas com `jest.fn()` | **25/25** |
-| Testes de integração da API | Jest + Supertest, banco SQLite temporário | **49/49** |
-| Fluxo completo no navegador (front + API) | Chrome headless (puppeteer) | **37/37** verificações |
-| Swagger UI no navegador (Try it out + Authorize) | Chrome headless (puppeteer) | **14/14** verificações |
+| Testes unitários dos services (pedidos, auth, produtos, categorias, promoções) | Jest, dependências falsas com `jest.fn()` | **26/26** |
+| Testes de integração da API (inclui 8 testes de regressão da revisão) | Jest + Supertest, banco SQLite temporário | **57/57** |
+| Fluxos corrigidos na revisão, no navegador (build de produção + API) | Chrome headless (DevTools Protocol) | **13/13** verificações |
+| Fluxo completo no navegador (front + API) (equipe) | Chrome headless (puppeteer) | **37/37** verificações |
+| Swagger UI no navegador (Try it out + Authorize) (equipe) | Chrome headless (puppeteer) | **14/14** verificações |
 | Build do back-end / do front-end | `nest build` / `next build` | sem erros |
 | Lint do back-end | ESLint + Prettier (type-checked) | sem erros |
-| Modo produção | `NODE_ENV=production` com banco vazio | migration criou as tabelas; `/docs` 404; seed recusou `admin123` |
+| Modo produção (equipe) | `NODE_ENV=production` com banco vazio | migration criou as tabelas; `/docs` 404; seed recusou `admin123` |
 
 Cenários da tabela pedida, todos cobertos pelos testes de integração (`backend/test/tecshop.e2e-spec.ts`):
 
@@ -396,20 +400,24 @@ Também verificados:
 - **Segurança:** JWT expirado e JWT adulterado (401); senha gravada como hash bcrypt; preço enviado pelo navegador recusado (400); conta desativada não entra (403); transição de status inválida (422).
 - **Regras de negócio:** cancelar devolve o estoque; promoção aplica e retira o preço promocional; categoria com produtos não é excluída (409).
 - **Infraestrutura:** dashboard calculado a partir dos pedidos gravados; persistência depois de reiniciar a API; documento OpenAPI com as 11 tags, o esquema Bearer e o cadeado só nas rotas protegidas.
+- **Regressões da revisão** (bloco "Regressões da revisão" em `backend/test/tecshop.e2e-spec.ts`; cada teste falhava antes da correção): paginação de pedidos com vários itens; desativar e excluir promoção vencida devolvem o preço normal; `null` em campo obrigatório responde 400 (antes 500); promoções sobrepostas valem pelo menor preço; promoção de produto excluído some da lista pública; avaliação de produto inativo só aparece para o admin; relatório filtrado por produto conta só os pedidos que têm o produto.
+- **No navegador, depois das correções:** carrinho adulterado no `localStorage` não derruba o site; "Finalizar compra" → login → volta para o `/checkout` (build de produção); sessão vencida avisa "Sua sessão expirou" e mantém o carrinho; o login não entra em laço quando o token vence; redirect para outro site depois do login é recusado; formulários de categorias e promoções com React Hook Form + Zod; o PATCH da edição de produto manda só o que mudou; excluir o único item da última página mantém a paginação.
 
 ## Ajustes pedidos na correção da primeira etapa
 
-- **Limpar o localStorage ao sair:** ao sair, o carrinho é apagado do `localStorage` e o cookie do token é removido. Os dados que a primeira etapa guardava no navegador (inclusive a lista de usuários com senhas) agora moram no banco e são limpos do `localStorage` quando o site abre.
+- **Limpar o localStorage ao sair:** ao sair, o carrinho é apagado do `localStorage` e o cookie do token é removido. Isso acontece só no "Sair": quando a sessão apenas vence (1 hora), o carrinho continua guardado e a pessoa entra de novo para terminar a compra. Os dados que a primeira etapa guardava no navegador (inclusive a lista de usuários com senhas) agora moram no banco e são limpos do `localStorage` quando o site abre.
 - **F5 não perde os filtros do Início:** categoria e busca ficam na URL (`/?categoria=Joias&busca=anel`). Com isso, sobrevivem ao F5 e o link pode ser compartilhado; a filtragem é feita pela API.
 
 ## Limitações identificadas
 
 - **Imagens:** as dos produtos iniciais continuam hospedadas na Fake Store. Só o endereço fica no banco, e não há upload de imagens.
 - **Carrinho:** fica no navegador (decisão de projeto, para o visitante poder usar) e não acompanha o usuário entre dispositivos.
-- **Sessão:** não há refresh token, então depois de 1 hora é preciso entrar de novo. Como o JWT é stateless, desativar uma conta não derruba um token já emitido até ele vencer.
+- **Sessão:** não há refresh token, então depois de 1 hora é preciso entrar de novo (a tela avisa "Sua sessão expirou" e o carrinho continua guardado). Como o JWT é stateless, desativar uma conta não derruba um token já emitido até ele vencer.
 - **Promoções:** seguem a regra da primeira etapa, em que o preço promocional é gravado no produto quando a promoção passa a valer.
   - Uma promoção criada para começar no futuro não é aplicada sozinha quando a data chega, e é preciso editá-la ou reativá-la no dia.
-  - Uma promoção vencida e ainda ativa continua com o desconto até ser desativada. O painel avisa quando isso acontece.
+  - Uma promoção vencida e ainda ativa continua com o desconto até ser desativada ou excluída. O painel avisa quando isso acontece.
+  - Se duas promoções alcançam o mesmo produto (uma da categoria e outra só dele), vale o menor preço.
+  - O preço promocional é calculado quando a promoção é aplicada. Se o preço do produto mudar, ou se um produto entrar ou sair de uma categoria em promoção, é preciso editar a promoção (ou desativar e ativar de novo) para recalcular. Baixar o preço para menos que o promocional gravado responde 422.
 - **Busca:** a busca sem diferenciar maiúsculas do SQLite funciona só para letras sem acento ("ELETRÔNICOS" não encontra "Eletrônicos").
 - **Relatórios:** agrupam os dias pelo fuso horário do servidor.
 - **Lint do front:** o front-end não tem ESLint configurado (o Next 16 removeu o `next lint`). A validação foi feita pelo build e pelos testes no navegador.

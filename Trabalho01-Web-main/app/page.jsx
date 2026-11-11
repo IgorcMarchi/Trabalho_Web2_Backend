@@ -102,6 +102,8 @@ function ProdutosDoInicio() {
     const atual = new URLSearchParams(window.location.search);
     setCategoria(atual.get("categoria") || "todas");
     setBusca(atual.get("busca") || "");
+    // filtro novo (vindo da URL) também começa da primeira página
+    setPagina(1);
   }, [textoDaUrl]);
 
   // só pergunta à API depois que a pessoa para de digitar

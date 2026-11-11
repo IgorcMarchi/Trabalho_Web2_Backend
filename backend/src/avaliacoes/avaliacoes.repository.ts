@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { DeepPartial, Repository } from 'typeorm';
+import { DeepPartial, IsNull, Repository } from 'typeorm';
+import { StatusProduto } from '../produtos/status-produto.enum';
 import { Avaliacao } from './avaliacao.entity';
 
 @Injectable()
@@ -10,16 +11,26 @@ export class AvaliacoesRepository {
     private readonly repositorio: Repository<Avaliacao>,
   ) {}
 
+  // Na loja só aparecem avaliações de produtos à venda (ativos e não
+  // excluídos), como o próprio produto. O admin vê todas na moderação.
   listar(
     produtoId: number | undefined,
     skip: number,
     take: number,
+    incluirIndisponiveis: boolean,
   ): Promise<[Avaliacao[], number]> {
+    const doProduto = produtoId ? { produtoId } : {};
+
     return this.repositorio.findAndCount({
-      where: produtoId ? { produtoId } : {},
+      where: incluirIndisponiveis
+        ? doProduto
+        : {
+            ...doProduto,
+            produto: { status: StatusProduto.ATIVO, excluidoEm: IsNull() },
+          },
       relations: { produto: true, usuario: true },
-      // traz o nome até de produto excluído (o painel mostra "Produto excluído")
-      withDeleted: true,
+      // o admin vê o nome até de produto excluído (o painel mostra "Produto excluído")
+      withDeleted: incluirIndisponiveis,
       order: { id: 'DESC' },
       skip,
       take,

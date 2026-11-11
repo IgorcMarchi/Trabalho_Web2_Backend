@@ -26,6 +26,8 @@ import { PromocoesRepository } from './promocoes.repository';
 // valer (desativada ou excluída), devolve o preço normal. Agora isso
 // acontece numa transação e, ao tirar uma promoção, as outras que ainda
 // valem para os mesmos produtos são aplicadas de novo.
+// Se duas promoções alcançam o mesmo produto (uma da categoria e outra
+// só dele), vale o MENOR preço, em qualquer ordem.
 @Injectable()
 export class PromocoesService {
   constructor(
@@ -41,6 +43,18 @@ export class PromocoesService {
     );
   }
 
+  // Já gravou o preço promocional nos produtos? Inclui a promoção vencida
+  // que continua ativa: o desconto dela fica gravado até ela ser
+  // desativada ou excluída.
+  foiAplicada(promocao: Promocao, hoje = hojeLocal()): boolean {
+    return promocao.ativa && promocao.dataInicio <= hoje;
+  }
+
+  // promoção de um produto que foi excluído depois (exclusão lógica)
+  private produtoFoiExcluido(promocao: Promocao): boolean {
+    return promocao.alvo === AlvoPromocao.PRODUTO && !promocao.produto;
+  }
+
   async listar(
     situacao: SituacaoPromocao,
     usuario?: UsuarioToken,
@@ -51,10 +65,13 @@ export class PromocoesService {
       );
     }
 
+    // na loja, a promoção de um produto excluído não existe mais
     const promocoes =
       situacao === SituacaoPromocao.TODAS
         ? await this.promocoesRepository.listar()
-        : await this.promocoesRepository.listarValendo(hojeLocal());
+        : (await this.promocoesRepository.listarValendo(hojeLocal())).filter(
+            (promocao) => !this.produtoFoiExcluido(promocao),
+          );
 
     // uma consulta só para contar os produtos de todas as categorias (sem N+1)
     const categorias = await this.categoriasService.listar();
@@ -80,10 +97,11 @@ export class PromocoesService {
   ): Promise<PromocaoRespostaDto> {
     const promocao = await this.promocoesRepository.buscarPorId(id);
 
-    // fora do período ela só existe para o admin
+    // fora do período (ou com o produto excluído) ela só existe para o admin
     if (
       !promocao ||
-      (!this.estaValendo(promocao) && usuario?.papel !== Papel.ADMIN)
+      (usuario?.papel !== Papel.ADMIN &&
+        (!this.estaValendo(promocao) || this.produtoFoiExcluido(promocao)))
     ) {
       throw new NotFoundException(`Promoção ${id} não encontrada.`);
     }
@@ -113,8 +131,9 @@ export class PromocoesService {
     return this.dataSource.transaction(async (manager) => {
       const promocao = await this.buscarEntidade(id, manager);
 
-      // tira o efeito antigo antes de mudar (valor, datas ou alvo podem mudar)
-      if (this.estaValendo(promocao)) {
+      // tira o efeito antigo antes de mudar (valor, datas ou alvo podem mudar).
+      // Vale também para a vencida: o preço dela ainda está nos produtos.
+      if (this.foiAplicada(promocao)) {
         await this.limpar(promocao, manager);
       }
 
@@ -136,7 +155,7 @@ export class PromocoesService {
       await this.promocoesRepository.remover(id, manager);
 
       // apaga primeiro: assim o limpar já não reaplica esta promoção
-      if (this.estaValendo(promocao)) {
+      if (this.foiAplicada(promocao)) {
         await this.limpar(promocao, manager);
       }
     });
@@ -234,13 +253,22 @@ export class PromocoesService {
     );
   }
 
+  // só grava se o produto ainda não tem um preço promocional menor
+  // (de outra promoção): assim vale o menor preço, em qualquer ordem
   private async aplicar(promocao: Promocao, manager: EntityManager) {
     for (const produto of await this.produtosAlcancados(promocao, manager)) {
-      await this.produtosService.definirPrecoPromocional(
-        produto.id,
-        this.calcularPreco(produto, promocao),
-        manager,
-      );
+      const novoPreco = this.calcularPreco(produto, promocao);
+
+      if (
+        produto.precoPromocional === null ||
+        novoPreco < produto.precoPromocional
+      ) {
+        await this.produtosService.definirPrecoPromocional(
+          produto.id,
+          novoPreco,
+          manager,
+        );
+      }
     }
   }
 

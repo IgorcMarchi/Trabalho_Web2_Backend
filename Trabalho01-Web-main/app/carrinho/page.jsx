@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import Carregando from "../../components/Carregando";
 import ItemCarrinho from "../../components/ItemCarrinho";
 import { useCarrinho } from "../../contexto/CarrinhoContext";
 
@@ -8,6 +9,7 @@ import { useCarrinho } from "../../contexto/CarrinhoContext";
 export default function Carrinho() {
   const {
     itens,
+    carregou,
     total,
     limpar,
     verificando,
@@ -15,6 +17,11 @@ export default function Carrinho() {
     podeFinalizar,
     verificarDeNovo,
   } = useCarrinho();
+
+  // espera ler o carrinho salvo (senão o F5 mostraria "vazio" por um instante)
+  if (!carregou) {
+    return <Carregando texto="Carregando seu carrinho..." />;
+  }
 
   // se não tem nada no carrinho, mostra um aviso no lugar da lista
   if (itens.length === 0) {
@@ -33,6 +40,14 @@ export default function Carrinho() {
   }
 
   const temProblema = itens.some((item) => item.disponivel === false);
+
+  // o texto embaixo do total acompanha a conferência com o servidor
+  let situacaoDosPrecos = "Preços conferidos com a loja.";
+  if (verificando) {
+    situacaoDosPrecos = "Conferindo preços e estoque...";
+  } else if (erroVerificacao) {
+    situacaoDosPrecos = "Preços ainda não conferidos com a loja.";
+  }
 
   return (
     <div>
@@ -65,9 +80,7 @@ export default function Carrinho() {
           <p className="text-xl font-bold">
             Total: <span className="text-green-700">R$ {total.toFixed(2)}</span>
           </p>
-          <p className="text-xs text-gray-500 dark:text-gray-400">
-            {verificando ? "Conferindo preços e estoque..." : "Preços conferidos com a loja."}
-          </p>
+          <p className="text-xs text-gray-500 dark:text-gray-400">{situacaoDosPrecos}</p>
         </div>
 
         <div className="flex gap-2">
@@ -78,8 +91,12 @@ export default function Carrinho() {
             Limpar carrinho
           </button>
           {podeFinalizar ? (
+            // prefetch={false}: o /checkout é privado. Pré-carregado por um
+            // visitante, o Next guardava o redirect do proxy.js para o login
+            // e, depois de entrar, mandava a pessoa de volta para o login.
             <Link
               href="/checkout"
+              prefetch={false}
               className="bg-orange-500 text-white rounded px-6 py-2 font-bold hover:bg-orange-600"
             >
               Finalizar compra

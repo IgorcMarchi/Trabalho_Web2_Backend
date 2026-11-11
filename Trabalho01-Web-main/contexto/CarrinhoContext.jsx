@@ -1,9 +1,25 @@
 "use client";
 
-import { createContext, useContext, useState, useEffect, useRef } from "react";
+import { createContext, useContext, useState, useEffect } from "react";
 import { precoFinal } from "../dados/precos";
 import { calcularCarrinho } from "../lib/carrinho";
 import { useUsuario } from "./UsuarioContext";
+
+// o mesmo limite da API (POST /carrinho/calcular e POST /pedidos)
+export const MAXIMO_POR_ITEM = 99;
+
+// Item guardado no navegador: precisa ao menos de id e quantidade válidos.
+// Preço e nome não importam aqui, porque quem manda neles é o servidor.
+function itemValido(item) {
+  return (
+    item !== null &&
+    typeof item === "object" &&
+    Number.isInteger(item.id) &&
+    item.id > 0 &&
+    Number.isInteger(item.quantidade) &&
+    item.quantidade > 0
+  );
+}
 
 // Aqui fica o carrinho. Como ele precisa ser acessado em várias páginas
 // (navbar, produtos, carrinho, checkout), usamos o Context pra não ter
@@ -35,7 +51,24 @@ export function CarrinhoProvider({ children }) {
     const salvo = localStorage.getItem("carrinho");
 
     if (salvo) {
-      setItens(JSON.parse(salvo));
+      // O localStorage pode ser mexido pelo F12. Se o que está lá não for
+      // uma lista de itens válida, descartamos em vez de derrubar o site.
+      try {
+        const lido = JSON.parse(salvo);
+
+        if (Array.isArray(lido)) {
+          setItens(
+            lido.filter(itemValido).map((item) => ({
+              ...item,
+              quantidade: Math.min(item.quantidade, MAXIMO_POR_ITEM),
+            }))
+          );
+        } else {
+          localStorage.removeItem("carrinho");
+        }
+      } catch {
+        localStorage.removeItem("carrinho");
+      }
     }
 
     setCarregou(true);
@@ -53,20 +86,17 @@ export function CarrinhoProvider({ children }) {
     }
   }, [itens, carregou]);
 
-  // esvazia o carrinho quando a pessoa sai da conta.
-  // O useRef guarda quem estava logado no render anterior: só limpamos
-  // quando tinha alguém e agora não tem mais (logout). Assim o carrinho
-  // de quem ainda não entrou na conta não é apagado quando a página abre.
-  const { usuario } = useUsuario();
-  const usuarioAnterior = useRef(null);
+  // Esvazia o carrinho quando a pessoa clica em "Sair" (ajuste pedido na
+  // correção da etapa 1). O "saidas" só aumenta no logout de verdade:
+  // a sessão que apenas venceu (1 hora) não apaga o carrinho, então a
+  // pessoa entra de novo e continua a compra de onde parou.
+  const { saidas } = useUsuario();
 
   useEffect(() => {
-    if (usuarioAnterior.current && !usuario) {
+    if (saidas > 0) {
       setItens([]);
     }
-
-    usuarioAnterior.current = usuario;
-  }, [usuario]);
+  }, [saidas]);
 
   // Só muda quando muda O QUE está no carrinho (produto ou quantidade).
   // Atualizar o preço vindo do servidor não muda a chave, então não entra
@@ -156,8 +186,9 @@ export function CarrinhoProvider({ children }) {
   function mudarQuantidade(id, novaQuantidade) {
     const item = itens.find((i) => i.id === id);
 
-    // não deixa a quantidade ficar menor que 1 nem passar do estoque
-    if (!item || novaQuantidade < 1) {
+    // não deixa a quantidade ficar menor que 1, passar do estoque
+    // nem passar do limite por produto que a API aceita
+    if (!item || novaQuantidade < 1 || novaQuantidade > MAXIMO_POR_ITEM) {
       return;
     }
 
@@ -192,6 +223,8 @@ export function CarrinhoProvider({ children }) {
     <CarrinhoContext.Provider
       value={{
         itens,
+        // false enquanto o carrinho salvo ainda não foi lido do navegador
+        carregou,
         adicionar,
         remover,
         mudarQuantidade,

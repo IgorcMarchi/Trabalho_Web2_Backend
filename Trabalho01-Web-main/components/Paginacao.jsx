@@ -1,8 +1,10 @@
 // Botões de página. Recebe o "meta" que a API devolve nas listas
 // ({ pagina, paginas, total }) e a função que troca de página.
-// Com uma página só, não mostra nada.
+// Com uma página só, não mostra nada. Mas se a página atual ficou vazia
+// (ex.: o admin excluiu o único item da última página), os botões
+// continuam lá, senão não haveria como voltar.
 function Paginacao({ meta, aoMudar }) {
-  if (!meta || meta.paginas <= 1) {
+  if (!meta || (meta.paginas <= 1 && meta.pagina <= 1)) {
     return null;
   }
 

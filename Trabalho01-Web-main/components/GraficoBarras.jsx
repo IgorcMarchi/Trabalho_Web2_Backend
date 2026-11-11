@@ -18,8 +18,10 @@ function GraficoBarras({ dados, prefixo, cor }) {
 
   return (
     <div className="flex flex-col gap-3">
-      {dados.map((item) => (
-        <div key={item.rotulo}>
+      {/* o rótulo sozinho pode repetir (dois produtos com o mesmo nome),
+          por isso a key junta a posição na lista */}
+      {dados.map((item, indice) => (
+        <div key={`${item.rotulo}-${indice}`}>
           <div className="flex justify-between text-sm mb-1 gap-3">
             <span className="line-clamp-1">{item.rotulo}</span>
             <span className="font-bold shrink-0">

@@ -27,7 +27,8 @@ export default function DetalhePedido() {
   const [erroAcao, setErroAcao] = useState("");
   const [salvando, setSalvando] = useState(false);
 
-  if (statusErro === 404) {
+  // 404 = não existe; 400 = o número da URL nem é número
+  if (statusErro === 404 || statusErro === 400) {
     return (
       <div>
         <h1 className="text-2xl font-bold text-gray-800 dark:text-gray-100 mb-2">
@@ -88,7 +89,7 @@ export default function DetalhePedido() {
 
       <div className="flex flex-wrap gap-4">
         {/* produtos do pedido */}
-        <div className="flex-1 min-w-[320px]">
+        <div className="flex-1 sm:min-w-[320px]">
           <div className="bg-white dark:bg-gray-800 border-2 border-gray-200 dark:border-gray-700 rounded-lg p-5">
             <h2 className="font-bold mb-3">Produtos</h2>
 

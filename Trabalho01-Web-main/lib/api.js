@@ -47,7 +47,8 @@ export async function requisicao(caminho, { metodo = "GET", corpo, consulta } = 
     throw new ApiError(0, "Sem conexão. Verifique a internet e tente de novo.");
   }
 
-  if (resposta.headers.get("x-sessao-expirada")) {
+  const sessaoExpirada = Boolean(resposta.headers.get("x-sessao-expirada"));
+  if (sessaoExpirada) {
     window.dispatchEvent(new Event(EVENTO_SESSAO_EXPIRADA));
   }
 
@@ -59,11 +60,23 @@ export async function requisicao(caminho, { metodo = "GET", corpo, consulta } = 
 
   // ATENÇÃO: 404 e 500 NÃO lançam erro no fetch. Por isso o res.ok.
   if (!resposta.ok) {
+    // a sessão acabou (token vencido ou apagado): mensagem clara, em vez
+    // do texto técnico da API sobre o cabeçalho Authorization
+    if (sessaoExpirada) {
+      throw new ApiError(401, "Sua sessão expirou. Entre na sua conta de novo.");
+    }
+
     const erro = json?.erro;
+    const mensagem = erro?.mensagem ?? `O servidor respondeu com erro ${resposta.status}.`;
+
+    // Erro de validação (400): a API manda o motivo de cada campo em
+    // "detalhes". Juntamos na mensagem para a pessoa saber o que corrigir.
+    const detalhes = Array.isArray(erro?.detalhes) ? erro.detalhes : [];
+
     throw new ApiError(
       resposta.status,
-      erro?.mensagem ?? `O servidor respondeu com erro ${resposta.status}.`,
-      { codigo: erro?.codigo, detalhes: erro?.detalhes }
+      detalhes.length > 0 ? `${mensagem} ${detalhes.join("; ")}` : mensagem,
+      { codigo: erro?.codigo, detalhes }
     );
   }
 

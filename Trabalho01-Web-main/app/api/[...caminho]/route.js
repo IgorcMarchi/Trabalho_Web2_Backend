@@ -62,10 +62,15 @@ async function encaminhar(request, { params }) {
     },
   });
 
-  // tinha token e a API disse 401: a sessão venceu. Apaga o cookie e
-  // avisa a página (o UsuarioContext escuta esse aviso).
-  if (resposta.status === 401 && token) {
-    saida.cookies.delete(COOKIE_TOKEN);
+  // A API disse 401: a sessão acabou. Pode ser token vencido ou adulterado,
+  // ou o cookie que já expirou junto com o token (aí nem chega token aqui).
+  // Apaga o cookie, se ainda existir, e avisa a página (o UsuarioContext
+  // escuta esse aviso). O login não passa por aqui (/api/auth/login tem
+  // rota própria), então senha errada não vira "sessão expirada".
+  if (resposta.status === 401) {
+    if (token) {
+      saida.cookies.delete(COOKIE_TOKEN);
+    }
     saida.headers.set("x-sessao-expirada", "1");
   }
 

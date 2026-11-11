@@ -18,6 +18,7 @@ export default function AdminProdutos() {
   const [filtroStatus, setFiltroStatus] = useState("TODOS");
   const [pagina, setPagina] = useState(1);
   const [erroAcao, setErroAcao] = useState("");
+  const [sucesso, setSucesso] = useState("");
 
   const buscaAtrasada = useDebounce(busca);
 
@@ -45,11 +46,13 @@ export default function AdminProdutos() {
     };
   }
 
-  async function executar(acao) {
+  async function executar(acao, mensagemDeSucesso) {
     setErroAcao("");
+    setSucesso("");
     try {
       await acao();
       produtosReq.recarregar();
+      setSucesso(mensagemDeSucesso);
     } catch (e) {
       setErroAcao(e.message);
     }
@@ -60,13 +63,18 @@ export default function AdminProdutos() {
     const certeza = confirm(`Excluir o produto "${produto.nome}"?`);
 
     if (certeza) {
-      executar(() => excluirProduto(produto.id));
+      executar(() => excluirProduto(produto.id), `Produto "${produto.nome}" excluído.`);
     }
   }
 
   function alternarStatus(produto) {
     const novoStatus = produto.status === "ATIVO" ? "INATIVO" : "ATIVO";
-    executar(() => atualizarProduto(produto.id, { status: novoStatus }));
+    executar(
+      () => atualizarProduto(produto.id, { status: novoStatus }),
+      novoStatus === "ATIVO"
+        ? `Produto "${produto.nome}" ativado.`
+        : `Produto "${produto.nome}" desativado.`
+    );
   }
 
   const dados = produtosReq.dados;
@@ -95,12 +103,14 @@ export default function AdminProdutos() {
           value={busca}
           onChange={filtrar(setBusca)}
           placeholder="Buscar pelo nome..."
+          aria-label="Buscar produto pelo nome"
           className="flex-1 min-w-[200px] border-2 border-gray-200 dark:border-gray-700 rounded p-2"
         />
 
         <select
           value={filtroCategoria}
           onChange={filtrar(setFiltroCategoria)}
+          aria-label="Filtrar por categoria"
           className="border-2 border-gray-200 dark:border-gray-700 rounded p-2"
         >
           <option value="todas">Todas as categorias</option>
@@ -114,6 +124,7 @@ export default function AdminProdutos() {
         <select
           value={filtroStatus}
           onChange={filtrar(setFiltroStatus)}
+          aria-label="Filtrar por status"
           className="border-2 border-gray-200 dark:border-gray-700 rounded p-2"
         >
           <option value="TODOS">Todos os status</option>
@@ -125,6 +136,12 @@ export default function AdminProdutos() {
       {erroAcao && (
         <p className="bg-red-100 border-2 border-red-300 text-red-700 rounded p-3 mb-4">
           {erroAcao}
+        </p>
+      )}
+
+      {sucesso && (
+        <p className="bg-green-100 border-2 border-green-300 text-green-800 rounded p-3 mb-4">
+          {sucesso}
         </p>
       )}
 

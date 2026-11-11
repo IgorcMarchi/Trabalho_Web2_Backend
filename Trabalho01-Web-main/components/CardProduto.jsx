@@ -19,6 +19,18 @@ function CardProduto({ produto }) {
   const favorito = listaDesejos.estaNaLista(produto.id);
   const promocao = temPromocao(produto);
 
+  // Na lista de desejos pode aparecer um produto que o admin desativou
+  // depois: ele continua guardado, mas não está à venda.
+  const inativo = produto.status === "INATIVO";
+  const esgotado = produto.estoque === 0;
+
+  let textoDoBotao = "Adicionar ao carrinho";
+  if (inativo) {
+    textoDoBotao = "Indisponível";
+  } else if (esgotado) {
+    textoDoBotao = "Esgotado";
+  }
+
   function clicarCoracao() {
     // a sessão ainda está sendo conferida no servidor: espera,
     // senão quem está logado seria mandado para o login por engano
@@ -51,6 +63,7 @@ function CardProduto({ produto }) {
       <button
         onClick={clicarCoracao}
         title={favorito ? "Tirar da lista de desejos" : "Colocar na lista de desejos"}
+        aria-label={favorito ? "Tirar da lista de desejos" : "Colocar na lista de desejos"}
         className={
           favorito
             ? "absolute top-2 right-2 text-red-600"
@@ -91,13 +104,14 @@ function CardProduto({ produto }) {
         R$ {precoFinal(produto).toFixed(2)}
       </p>
 
-      {/* o estoque vem do banco: sem unidades, não dá para adicionar */}
+      {/* o estoque e o status vêm do banco: sem unidades, ou fora de
+          venda, não dá para adicionar */}
       <button
         onClick={() => adicionar(produto)}
-        disabled={produto.estoque === 0}
+        disabled={inativo || esgotado}
         className="mt-3 bg-blue-700 text-white rounded py-2 font-bold hover:bg-blue-800 disabled:bg-gray-400 disabled:cursor-not-allowed"
       >
-        {produto.estoque === 0 ? "Esgotado" : "Adicionar ao carrinho"}
+        {textoDoBotao}
       </button>
     </div>
   );

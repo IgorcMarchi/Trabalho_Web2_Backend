@@ -112,7 +112,11 @@ export class ResumoClientesDto {
 }
 
 export class RelatorioVendasDto {
-  @ApiProperty({ example: 5, description: 'Pedidos não cancelados no período' })
+  @ApiProperty({
+    example: 5,
+    description:
+      'Pedidos não cancelados no período (com filtro de categoria ou produto, só os que têm esses itens)',
+  })
   totalVendas: number;
 
   @ApiProperty({

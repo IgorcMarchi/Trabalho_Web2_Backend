@@ -8,12 +8,24 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { useUsuario } from "../../contexto/UsuarioContext";
 
-// Regras do cadastro
+// Regras do cadastro (os mesmos limites que a API confere no RegistroDto)
 const schema = z
   .object({
-    nome: z.string().min(3, "O nome precisa ter pelo menos 3 letras"),
-    email: z.string().email("Digite um e-mail válido"),
-    senha: z.string().min(6, "A senha precisa ter pelo menos 6 caracteres"),
+    nome: z
+      .string()
+      .trim()
+      .min(3, "O nome precisa ter pelo menos 3 letras")
+      .max(120, "O nome pode ter no máximo 120 letras"),
+    email: z
+      .string()
+      .trim()
+      .max(160, "O e-mail pode ter no máximo 160 caracteres")
+      .email("Digite um e-mail válido"),
+    // o bcrypt só considera os primeiros 72 caracteres, por isso o limite
+    senha: z
+      .string()
+      .min(6, "A senha precisa ter pelo menos 6 caracteres")
+      .max(72, "A senha pode ter no máximo 72 caracteres"),
     confirmarSenha: z.string(),
   })
   // o refine confere se as duas senhas são iguais
@@ -52,6 +64,14 @@ export default function Cadastro() {
     }
   }
 
+  async function clicarSair() {
+    setErro("");
+    const resultado = await sair();
+    if (!resultado.ok) {
+      setErro(resultado.erro);
+    }
+  }
+
   // quem já tem conta e está logado não precisa criar outra.
   // Mesma tela de confirmação da página de login.
   // Quem acabou de se cadastrar agora não vê essa tela.
@@ -67,11 +87,17 @@ export default function Cadastro() {
             conta você precisa sair desta primeiro.
           </p>
 
+          {erro && (
+            <p className="bg-red-100 border-2 border-red-300 text-red-700 rounded p-3 mt-4">
+              {erro}
+            </p>
+          )}
+
           <p className="font-bold mt-6 mb-4">Tem certeza que deseja sair?</p>
 
           <div className="flex gap-3 justify-center">
             <button
-              onClick={sair}
+              onClick={clicarSair}
               className="bg-red-600 text-white rounded px-6 py-3 font-bold hover:bg-red-700"
             >
               Sim, sair
@@ -102,8 +128,9 @@ export default function Cadastro() {
           </p>
         )}
 
-        <label className="block font-bold mb-1">Nome completo</label>
+        <label htmlFor="nome" className="block font-bold mb-1">Nome completo</label>
         <input
+          id="nome"
           {...register("nome")}
           className="w-full border-2 border-gray-200 dark:border-gray-700 rounded p-2"
         />
@@ -111,8 +138,9 @@ export default function Cadastro() {
           <p className="text-red-600 text-sm mt-1">{errors.nome.message}</p>
         )}
 
-        <label className="block font-bold mb-1 mt-4">E-mail</label>
+        <label htmlFor="email" className="block font-bold mb-1 mt-4">E-mail</label>
         <input
+          id="email"
           {...register("email")}
           className="w-full border-2 border-gray-200 dark:border-gray-700 rounded p-2"
         />
@@ -120,8 +148,9 @@ export default function Cadastro() {
           <p className="text-red-600 text-sm mt-1">{errors.email.message}</p>
         )}
 
-        <label className="block font-bold mb-1 mt-4">Senha</label>
+        <label htmlFor="senha" className="block font-bold mb-1 mt-4">Senha</label>
         <input
+          id="senha"
           type="password"
           {...register("senha")}
           className="w-full border-2 border-gray-200 dark:border-gray-700 rounded p-2"
@@ -130,8 +159,11 @@ export default function Cadastro() {
           <p className="text-red-600 text-sm mt-1">{errors.senha.message}</p>
         )}
 
-        <label className="block font-bold mb-1 mt-4">Confirmar senha</label>
+        <label htmlFor="confirmarSenha" className="block font-bold mb-1 mt-4">
+          Confirmar senha
+        </label>
         <input
+          id="confirmarSenha"
           type="password"
           {...register("confirmarSenha")}
           className="w-full border-2 border-gray-200 dark:border-gray-700 rounded p-2"

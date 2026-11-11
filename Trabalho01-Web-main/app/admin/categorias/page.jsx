@@ -1,6 +1,9 @@
 "use client";
 
 import { useState } from "react";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { z } from "zod";
 import Carregando from "../../../components/Carregando";
 import MensagemErro from "../../../components/MensagemErro";
 import { useRequisicao } from "../../../hooks/useRequisicao";
@@ -11,28 +14,43 @@ import {
   listarCategorias,
 } from "../../../lib/categorias";
 
+// Regra do nome da categoria: a mesma do CriarCategoriaDto da API.
+// Vale tanto para criar quanto para renomear.
+const schema = z.object({
+  nome: z
+    .string()
+    .trim()
+    .min(3, "O nome precisa ter pelo menos 3 letras")
+    .max(80, "O nome pode ter no máximo 80 letras"),
+});
+
 // Gerenciamento de categorias (rota /admin/categorias)
 export default function AdminCategorias() {
   // cada categoria já vem da API com quantos produtos tem
   const { dados, erro: erroLista, recarregar } = useRequisicao(() => listarCategorias(), []);
   const categorias = dados ?? [];
 
-  const [nomeNovo, setNomeNovo] = useState("");
   const [erro, setErro] = useState("");
+  const [sucesso, setSucesso] = useState("");
   const [salvando, setSalvando] = useState(false);
 
-  // guarda qual categoria está sendo editada e o texto digitado
+  // qual categoria está sendo renomeada (uma de cada vez)
   const [editandoId, setEditandoId] = useState(null);
-  const [textoEditado, setTextoEditado] = useState("");
 
-  // As regras (nome repetido, categoria com produto) quem confere é a API;
-  // aqui só mostramos a mensagem que ela devolver.
-  async function executar(acao) {
+  // um formulário para criar e outro para renomear, com a mesma regra
+  const formNova = useForm({ resolver: zodResolver(schema), defaultValues: { nome: "" } });
+  const formEdicao = useForm({ resolver: zodResolver(schema), defaultValues: { nome: "" } });
+
+  // As regras que dependem do banco (nome repetido, categoria com produto)
+  // quem confere é a API; aqui só mostramos a mensagem que ela devolver.
+  async function executar(acao, mensagemDeSucesso) {
     setErro("");
+    setSucesso("");
     setSalvando(true);
     try {
       await acao();
       recarregar();
+      setSucesso(mensagemDeSucesso);
       return true;
     } catch (e) {
       setErro(e.message);
@@ -42,41 +60,52 @@ export default function AdminCategorias() {
     }
   }
 
-  async function criar(evento) {
-    evento.preventDefault();
-    setErro("");
-
-    if (nomeNovo.trim().length < 3) {
-      setErro("O nome precisa ter pelo menos 3 letras");
-      return;
-    }
-
-    if (await executar(() => criarCategoria(nomeNovo.trim()))) {
-      setNomeNovo("");
+  async function criar({ nome }) {
+    if (await executar(() => criarCategoria(nome), `Categoria "${nome}" criada.`)) {
+      formNova.reset({ nome: "" });
     }
   }
 
   function comecarEdicao(categoria) {
     setEditandoId(categoria.id);
-    setTextoEditado(categoria.nome);
+    formEdicao.reset({ nome: categoria.nome });
     setErro("");
+    setSucesso("");
   }
 
-  async function salvarEdicao(id) {
+  async function salvarEdicao({ nome }) {
     // renomear não mexe nos produtos: eles apontam para o id da categoria
-    if (await executar(() => atualizarCategoria(id, { nome: textoEditado.trim() }))) {
+    const salvou = await executar(
+      () => atualizarCategoria(editandoId, { nome }),
+      `Categoria renomeada para "${nome}".`
+    );
+
+    if (salvou) {
       setEditandoId(null);
     }
   }
 
+  function alternarAtiva(categoria) {
+    executar(
+      () => atualizarCategoria(categoria.id, { ativa: !categoria.ativa }),
+      categoria.ativa
+        ? `Categoria "${categoria.nome}" desativada.`
+        : `Categoria "${categoria.nome}" ativada.`
+    );
+  }
+
   function clicarExcluir(categoria) {
     setErro("");
+    setSucesso("");
 
     const certeza = confirm(`Excluir a categoria "${categoria.nome}"?`);
 
     if (certeza) {
       // com produtos dentro, a API responde 409 e a mensagem aparece aqui
-      executar(() => excluirCategoria(categoria.id));
+      executar(
+        () => excluirCategoria(categoria.id),
+        `Categoria "${categoria.nome}" excluída.`
+      );
     }
   }
 
@@ -87,6 +116,9 @@ export default function AdminCategorias() {
   if (!dados) {
     return <Carregando texto="Carregando categorias..." />;
   }
+
+  const erroNova = formNova.formState.errors.nome;
+  const erroEdicao = formEdicao.formState.errors.nome;
 
   return (
     <div>
@@ -101,21 +133,30 @@ export default function AdminCategorias() {
         </p>
       )}
 
+      {sucesso && (
+        <p className="bg-green-100 border-2 border-green-300 text-green-800 rounded p-3 mb-4">
+          {sucesso}
+        </p>
+      )}
+
       {/* formulário de nova categoria */}
       <form
-        onSubmit={criar}
+        onSubmit={formNova.handleSubmit(criar)}
         className="bg-white dark:bg-gray-800 border-2 border-gray-200 dark:border-gray-700 rounded-lg p-4 mb-6 flex flex-wrap gap-3"
       >
-        <input
-          value={nomeNovo}
-          onChange={(e) => setNomeNovo(e.target.value)}
-          placeholder="Nome da nova categoria"
-          className="flex-1 min-w-[200px] border-2 border-gray-200 dark:border-gray-700 rounded p-2"
-        />
+        <div className="flex-1 min-w-[200px]">
+          <input
+            {...formNova.register("nome")}
+            placeholder="Nome da nova categoria"
+            aria-label="Nome da nova categoria"
+            className="w-full border-2 border-gray-200 dark:border-gray-700 rounded p-2"
+          />
+          {erroNova && <p className="text-red-600 text-sm mt-1">{erroNova.message}</p>}
+        </div>
         <button
           type="submit"
           disabled={salvando}
-          className="bg-blue-700 text-white rounded px-5 py-2 font-bold hover:bg-blue-800 disabled:opacity-60"
+          className="self-start bg-blue-700 text-white rounded px-5 py-2 font-bold hover:bg-blue-800 disabled:opacity-60"
         >
           Criar categoria
         </button>
@@ -131,11 +172,16 @@ export default function AdminCategorias() {
               className="bg-white dark:bg-gray-800 border-2 border-gray-200 dark:border-gray-700 rounded-lg p-4 flex flex-wrap items-center gap-3"
             >
               {editandoId === categoria.id ? (
-                <input
-                  value={textoEditado}
-                  onChange={(e) => setTextoEditado(e.target.value)}
-                  className="flex-1 min-w-[200px] border-2 border-blue-400 rounded p-2"
-                />
+                <div className="flex-1 min-w-[200px]">
+                  <input
+                    {...formEdicao.register("nome")}
+                    aria-label={`Novo nome da categoria ${categoria.nome}`}
+                    className="w-full border-2 border-blue-400 rounded p-2"
+                  />
+                  {erroEdicao && (
+                    <p className="text-red-600 text-sm mt-1">{erroEdicao.message}</p>
+                  )}
+                </div>
               ) : (
                 <div className="flex-1 min-w-[200px]">
                   <p className="font-bold">{categoria.nome}</p>
@@ -159,7 +205,7 @@ export default function AdminCategorias() {
                 {editandoId === categoria.id ? (
                   <>
                     <button
-                      onClick={() => salvarEdicao(categoria.id)}
+                      onClick={formEdicao.handleSubmit(salvarEdicao)}
                       disabled={salvando}
                       className="bg-blue-700 text-white rounded px-3 py-1 text-sm font-bold hover:bg-blue-800 disabled:opacity-60"
                     >
@@ -181,11 +227,7 @@ export default function AdminCategorias() {
                       Renomear
                     </button>
                     <button
-                      onClick={() =>
-                        executar(() =>
-                          atualizarCategoria(categoria.id, { ativa: !categoria.ativa })
-                        )
-                      }
+                      onClick={() => alternarAtiva(categoria)}
                       className="border-2 border-gray-300 dark:border-gray-600 rounded px-3 py-1 text-sm font-bold hover:bg-gray-100 dark:hover:bg-gray-700"
                     >
                       {categoria.ativa ? "Desativar" : "Ativar"}

@@ -13,6 +13,16 @@ export function validarAmbiente(
     );
   }
 
+  // Só o número ("3600") o JWT lê como MILISSEGUNDOS: o token venceria em
+  // 3,6 segundos e ninguém conseguiria usar o site. Exigimos a unidade.
+  const validade = config.JWT_EXPIRES_IN;
+  if (typeof validade === 'string' && /^\d+$/.test(validade.trim())) {
+    throw new Error(
+      'JWT_EXPIRES_IN precisa da unidade (ex.: 1h, 30m ou 3600s). ' +
+        'Só o número é lido como milissegundos.',
+    );
+  }
+
   const porta = Number(config.PORT ?? 3001);
   if (!Number.isInteger(porta) || porta <= 0) {
     throw new Error('PORT precisa ser um número inteiro positivo.');

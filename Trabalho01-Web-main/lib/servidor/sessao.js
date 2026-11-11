@@ -74,6 +74,13 @@ export async function verificarToken(token) {
     );
 
     if (!assinaturaConfere) {
+      // Ou o token foi adulterado, ou o JWT_SECRET do front-end é diferente
+      // do backend/.env. No segundo caso o login parece funcionar, mas toda
+      // página privada volta para o /login: o aviso no log ajuda a achar.
+      console.warn(
+        "Assinatura do token não confere. Confira se o JWT_SECRET do " +
+          "Trabalho01-Web-main/.env.local é o mesmo do backend/.env."
+      );
       return null;
     }
 

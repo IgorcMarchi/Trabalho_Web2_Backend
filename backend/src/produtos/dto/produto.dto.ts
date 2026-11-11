@@ -13,6 +13,7 @@ import {
   Max,
   MaxLength,
   Min,
+  ValidateIf,
 } from 'class-validator';
 import { textoParaBooleano } from '../../categorias/dto/categoria.dto';
 import { PaginacaoDto } from '../../comum/dto/paginacao.dto';
@@ -56,7 +57,7 @@ export class CriarProdutoDto {
     { message: 'preco deve ser um número com até 2 casas decimais' },
   )
   @IsPositive({ message: 'preco deve ser maior que zero' })
-  @Max(1_000_000)
+  @Max(1_000_000, { message: 'preco deve ser no máximo 1.000.000' })
   preco: number;
 
   @ApiPropertyOptional({
@@ -81,16 +82,17 @@ export class CriarProdutoDto {
     { require_protocol: true },
     { message: 'imagem deve ser um endereço http(s) válido' },
   )
-  @MaxLength(500)
+  @MaxLength(500, { message: 'imagem deve ter no máximo 500 caracteres' })
   imagem: string;
 
   @ApiProperty({ example: 3, description: 'Id de uma categoria existente' })
   @IsInt({ message: 'categoriaId deve ser um número inteiro' })
-  @Min(1)
+  @Min(1, { message: 'categoriaId deve ser no mínimo 1' })
   categoriaId: number;
 
   @ApiPropertyOptional({ enum: StatusProduto, default: StatusProduto.ATIVO })
-  @IsOptional()
+  // pode faltar, mas não pode vir null (o @IsOptional deixaria passar)
+  @ValidateIf((_, valor) => valor !== undefined)
   @IsEnum(StatusProduto, { message: 'status deve ser ATIVO ou INATIVO' })
   status?: StatusProduto;
 
@@ -99,15 +101,19 @@ export class CriarProdutoDto {
     default: 0,
     description: 'Unidades em estoque',
   })
-  @IsOptional()
+  @ValidateIf((_, valor) => valor !== undefined)
   @IsInt({ message: 'estoque deve ser um número inteiro' })
   @Min(0, { message: 'estoque não pode ser negativo' })
-  @Max(100_000)
+  @Max(100_000, { message: 'estoque deve ser no máximo 100.000' })
   estoque?: number;
 }
 
-// PATCH: manda só o que mudou (ex.: { "status": "INATIVO" })
-export class AtualizarProdutoDto extends PartialType(CriarProdutoDto) {}
+// PATCH: manda só o que mudou (ex.: { "status": "INATIVO" }).
+// skipNullProperties: false = campo ausente pode, campo null não (400).
+// Só o precoPromocional aceita null, que quer dizer "sem promoção".
+export class AtualizarProdutoDto extends PartialType(CriarProdutoDto, {
+  skipNullProperties: false,
+}) {}
 
 export enum FiltroStatusProduto {
   ATIVO = 'ATIVO',

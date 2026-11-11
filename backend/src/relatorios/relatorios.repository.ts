@@ -22,6 +22,21 @@ export interface LinhaGrafico {
   valor: number;
 }
 
+export interface LinhaPorDia {
+  dia: string;
+  faturamento: number;
+  quantidade: number;
+}
+
+// o SQLite devolve SUM/COUNT como texto ou número, conforme o caso
+function paraNumeros(linhas: LinhaPorDia[]): LinhaPorDia[] {
+  return linhas.map((l) => ({
+    dia: l.dia,
+    faturamento: Number(l.faturamento),
+    quantidade: Number(l.quantidade),
+  }));
+}
+
 // Consultas especiais (soma, contagem, agrupamento): o QueryBuilder fica
 // aqui dentro do repository. Tudo é calculado pelo banco, a partir dos
 // pedidos gravados. Pedido cancelado não conta como venda.
@@ -105,35 +120,46 @@ export class RelatoriosRepository {
     return this.dataSource.getRepository(Pedido).count();
   }
 
-  async porDia(
-    filtros: FiltrosRelatorio,
-  ): Promise<{ dia: string; faturamento: number; quantidade: number }[]> {
+  async porDia(filtros: FiltrosRelatorio): Promise<LinhaPorDia[]> {
     const linhas = await this.pedidosValidos(filtros)
       .select("date(pedido.criadoEm, 'localtime')", 'dia')
       .addSelect('SUM(pedido.total)', 'faturamento')
       .addSelect('COUNT(pedido.id)', 'quantidade')
       .groupBy('dia')
       .orderBy('dia', 'ASC')
-      .getRawMany<{ dia: string; faturamento: number; quantidade: number }>();
+      .getRawMany<LinhaPorDia>();
 
-    return linhas.map((l) => ({
-      dia: l.dia,
-      faturamento: Number(l.faturamento),
-      quantidade: Number(l.quantidade),
-    }));
+    return paraNumeros(linhas);
   }
 
+  // o mesmo que porDia, mas só com os itens que passam nos filtros de
+  // categoria/produto (o gráfico acompanha os números do relatório)
+  async porDiaDosItens(filtros: FiltrosRelatorio): Promise<LinhaPorDia[]> {
+    const linhas = await this.itensVendidos(filtros)
+      .select("date(pedido.criadoEm, 'localtime')", 'dia')
+      .addSelect('SUM(item.subtotal)', 'faturamento')
+      .addSelect('COUNT(DISTINCT pedido.id)', 'quantidade')
+      .groupBy('dia')
+      .orderBy('dia', 'ASC')
+      .getRawMany<LinhaPorDia>();
+
+    return paraNumeros(linhas);
+  }
+
+  // pedidos = quantos pedidos diferentes têm esses itens
   async totaisItens(
     filtros: FiltrosRelatorio,
-  ): Promise<{ pecas: number; faturamento: number }> {
+  ): Promise<{ pecas: number; faturamento: number; pedidos: number }> {
     const linha = await this.itensVendidos(filtros)
       .select('COALESCE(SUM(item.quantidade), 0)', 'pecas')
       .addSelect('COALESCE(SUM(item.subtotal), 0)', 'faturamento')
-      .getRawOne<{ pecas: number; faturamento: number }>();
+      .addSelect('COUNT(DISTINCT pedido.id)', 'pedidos')
+      .getRawOne<{ pecas: number; faturamento: number; pedidos: number }>();
 
     return {
       pecas: Number(linha?.pecas ?? 0),
       faturamento: Number(linha?.faturamento ?? 0),
+      pedidos: Number(linha?.pedidos ?? 0),
     };
   }
 

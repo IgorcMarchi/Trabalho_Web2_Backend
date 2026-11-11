@@ -908,4 +908,346 @@ describe('TecShop API (integração)', () => {
       });
     });
   });
+
+  // Casos encontrados na revisão do código. Cada um falhava antes da correção.
+  describe('Regressões da revisão', () => {
+    const data = (d: Date) =>
+      `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    const hoje = data(new Date());
+    const comoAdmin = () => ({ Authorization: `Bearer ${tokenAdmin}` });
+    let comoCarla: { Authorization: string };
+
+    const precoPromocionalDo = async (produtoId: number) =>
+      corpo<{ precoPromocional: number | null }>(
+        await api().get(`/produtos/${produtoId}`).expect(200),
+      ).dados.precoPromocional;
+
+    beforeAll(async () => {
+      const registro = await api()
+        .post('/auth/registro')
+        .send({
+          nome: 'Carla Dias',
+          email: 'carla@email.com',
+          senha: 'senha123',
+        })
+        .expect(201);
+      comoCarla = { Authorization: `Bearer ${corpo(registro).dados.token}` };
+    });
+
+    it('paginação de pedidos conta pedidos, e não itens', async () => {
+      // 3 pedidos com 2 itens cada
+      for (let i = 0; i < 3; i++) {
+        await api()
+          .post('/pedidos')
+          .set(comoCarla)
+          .send({
+            nome: 'Carla Dias',
+            telefone: '(45) 97777-0000',
+            cep: '85892-000',
+            endereco: 'Rua Paraná, 10',
+            cidade: 'Santa Helena',
+            formaPagamento: 'PIX',
+            itens: [
+              { produtoId: 5, quantidade: 1 },
+              { produtoId: 6, quantidade: 1 },
+            ],
+          })
+          .expect(201);
+      }
+
+      // com 2 por página: página 1 com 2 pedidos, página 2 com 1
+      const idsDasPaginas = async (
+        url: string,
+        auth: { Authorization: string },
+      ) => {
+        const ids: number[] = [];
+        for (const pagina of [1, 2]) {
+          const resposta = await api()
+            .get(`${url}&pagina=${pagina}`)
+            .set(auth)
+            .expect(200);
+          const { itens, meta } = corpo<{
+            itens: { id: number; itens: { id: number }[] }[];
+            meta: { total: number; paginas: number };
+          }>(resposta).dados;
+          expect(meta).toMatchObject({ total: 3, paginas: 2 });
+
+          for (const pedido of itens) {
+            const idsDosItens = pedido.itens.map((item) => item.id);
+            expect(idsDosItens).toHaveLength(2);
+            expect(idsDosItens).toEqual([...idsDosItens].sort((a, b) => a - b));
+          }
+          ids.push(...itens.map((pedido) => pedido.id));
+        }
+        return ids;
+      };
+
+      const meus = await idsDasPaginas('/pedidos/meus?limite=2', comoCarla);
+      expect(new Set(meus).size).toBe(3);
+
+      const doPainel = await idsDasPaginas(
+        '/pedidos?busca=carla&limite=2',
+        comoAdmin(),
+      );
+      expect(new Set(doPainel)).toEqual(new Set(meus));
+    });
+
+    // cria uma promoção valendo hoje e "volta no tempo" direto no banco,
+    // como se a data de término já tivesse passado
+    async function criarPromocaoVencida(produtoId: number): Promise<number> {
+      const criada = await api()
+        .post('/promocoes')
+        .set(comoAdmin())
+        .send({
+          nome: 'Promoção que vai vencer',
+          tipo: 'PORCENTAGEM',
+          valor: 10,
+          dataInicio: hoje,
+          dataFim: hoje,
+          alvo: 'PRODUTO',
+          produtoId,
+        })
+        .expect(201);
+      const id = corpo<{ id: number }>(criada).dados.id;
+      expect(await precoPromocionalDo(produtoId)).not.toBeNull();
+
+      await app
+        .get(DataSource)
+        .query(
+          "UPDATE promocoes SET data_inicio = '2000-01-01', data_fim = '2000-01-02' WHERE id = ?",
+          [id],
+        );
+      return id;
+    }
+
+    it('desativar promoção vencida devolve o preço normal', async () => {
+      const id = await criarPromocaoVencida(7);
+      await api()
+        .patch(`/promocoes/${id}`)
+        .set(comoAdmin())
+        .send({ ativa: false })
+        .expect(200);
+      expect(await precoPromocionalDo(7)).toBeNull();
+    });
+
+    it('excluir promoção vencida devolve o preço normal', async () => {
+      const id = await criarPromocaoVencida(8);
+      await api().delete(`/promocoes/${id}`).set(comoAdmin()).expect(204);
+      expect(await precoPromocionalDo(8)).toBeNull();
+    });
+
+    it('null em campo obrigatório -> 400 (antes virava 500)', async () => {
+      await api()
+        .patch('/categorias/1')
+        .set(comoAdmin())
+        .send({ nome: null })
+        .expect(400);
+      await api()
+        .patch('/produtos/5')
+        .set(comoAdmin())
+        .send({ nome: null })
+        .expect(400);
+      await api()
+        .patch('/produtos/5')
+        .set(comoAdmin())
+        .send({ estoque: null })
+        .expect(400);
+      await api()
+        .post('/promocoes')
+        .set(comoAdmin())
+        .send({
+          nome: 'Com ativa nula',
+          tipo: 'VALOR',
+          valor: 5,
+          dataInicio: hoje,
+          dataFim: hoje,
+          alvo: 'PRODUTO',
+          produtoId: 5,
+          ativa: null,
+        })
+        .expect(400);
+
+      // categoriaId null não pode trocar a categoria do produto em silêncio
+      const categoriaDo20 = async () =>
+        corpo<{ categoriaId: number }>(
+          await api().get('/produtos/20').expect(200),
+        ).dados.categoriaId;
+      const antes = await categoriaDo20();
+      await api()
+        .patch('/produtos/20')
+        .set(comoAdmin())
+        .send({ categoriaId: null })
+        .expect(400);
+      expect(await categoriaDo20()).toBe(antes);
+
+      // precoPromocional continua aceitando null (= sem promoção)
+      await api()
+        .patch('/produtos/5')
+        .set(comoAdmin())
+        .send({ precoPromocional: null })
+        .expect(200);
+    });
+
+    it('promoções sobrepostas: vale o menor preço, em qualquer ordem', async () => {
+      const { categoriaId } = corpo<{ categoriaId: number }>(
+        await api().get('/produtos/5').expect(200),
+      ).dados;
+      const novaPromocao = async (dados: Record<string, unknown>) =>
+        corpo<{ id: number }>(
+          await api()
+            .post('/promocoes')
+            .set(comoAdmin())
+            .send({
+              tipo: 'PORCENTAGEM',
+              dataInicio: hoje,
+              dataFim: hoje,
+              ...dados,
+            })
+            .expect(201),
+        ).dados.id;
+
+      const daCategoria = await novaPromocao({
+        nome: 'Categoria inteira',
+        valor: 10,
+        alvo: 'CATEGORIA',
+        categoriaId,
+      });
+      const precoCom10 = await precoPromocionalDo(5);
+
+      const doProduto = await novaPromocao({
+        nome: 'Só o produto 5',
+        valor: 30,
+        alvo: 'PRODUTO',
+        produtoId: 5,
+      });
+      const precoCom30 = await precoPromocionalDo(5);
+      expect(precoCom30).toBeLessThan(precoCom10 ?? 0);
+
+      // mexer só no nome da promoção da categoria não derruba o desconto maior
+      await api()
+        .patch(`/promocoes/${daCategoria}`)
+        .set(comoAdmin())
+        .send({ nome: 'Categoria inteira (renomeada)' })
+        .expect(200);
+      expect(await precoPromocionalDo(5)).toBe(precoCom30);
+
+      // tirando a de 30%, volta a valer a de 10%; tirando as duas, preço normal
+      await api()
+        .delete(`/promocoes/${doProduto}`)
+        .set(comoAdmin())
+        .expect(204);
+      expect(await precoPromocionalDo(5)).toBe(precoCom10);
+      await api()
+        .delete(`/promocoes/${daCategoria}`)
+        .set(comoAdmin())
+        .expect(204);
+      expect(await precoPromocionalDo(5)).toBeNull();
+    });
+
+    it('promoção de produto excluído não aparece na lista pública', async () => {
+      const produto = await api()
+        .post('/produtos')
+        .set(comoAdmin())
+        .send({
+          nome: 'Produto temporário',
+          descricao: 'Criado só para este teste.',
+          preco: 50,
+          imagem: 'https://exemplo.com/produto.png',
+          categoriaId: 1,
+          estoque: 5,
+        })
+        .expect(201);
+      const produtoId = corpo<{ id: number }>(produto).dados.id;
+
+      const promocao = await api()
+        .post('/promocoes')
+        .set(comoAdmin())
+        .send({
+          nome: 'Promoção do temporário',
+          tipo: 'VALOR',
+          valor: 5,
+          dataInicio: hoje,
+          dataFim: hoje,
+          alvo: 'PRODUTO',
+          produtoId,
+        })
+        .expect(201);
+      const promocaoId = corpo<{ id: number }>(promocao).dados.id;
+
+      await api().delete(`/produtos/${produtoId}`).set(comoAdmin()).expect(204);
+
+      const publicas = corpo<{ id: number }[]>(
+        await api().get('/promocoes').expect(200),
+      ).dados;
+      expect(publicas.map((p) => p.id)).not.toContain(promocaoId);
+
+      // o admin continua vendo (com o produto vazio), para poder excluir
+      const todas = corpo<{ id: number; produto: unknown }[]>(
+        await api()
+          .get('/promocoes?situacao=TODAS')
+          .set(comoAdmin())
+          .expect(200),
+      ).dados;
+      expect(todas.find((p) => p.id === promocaoId)).toMatchObject({
+        produto: null,
+      });
+      await api()
+        .delete(`/promocoes/${promocaoId}`)
+        .set(comoAdmin())
+        .expect(204);
+    });
+
+    it('avaliação de produto inativo só aparece para o admin', async () => {
+      const criada = await api()
+        .post('/avaliacoes')
+        .set(comoCarla)
+        .send({ produtoId: 10, nota: 4, comentario: 'Gostei bastante.' })
+        .expect(201);
+      const id = corpo<{ id: number }>(criada).dados.id;
+
+      const idsDasAvaliacoes = async (auth: Record<string, string> = {}) =>
+        corpo<{ itens: { id: number }[] }>(
+          await api().get('/avaliacoes?limite=50').set(auth).expect(200),
+        ).dados.itens.map((avaliacao) => avaliacao.id);
+
+      await api()
+        .patch('/produtos/10')
+        .set(comoAdmin())
+        .send({ status: 'INATIVO' })
+        .expect(200);
+      expect(await idsDasAvaliacoes()).not.toContain(id);
+      expect(await idsDasAvaliacoes(comoAdmin())).toContain(id);
+
+      await api()
+        .patch('/produtos/10')
+        .set(comoAdmin())
+        .send({ status: 'ATIVO' })
+        .expect(200);
+      expect(await idsDasAvaliacoes()).toContain(id);
+      await api().delete(`/avaliacoes/${id}`).set(comoAdmin()).expect(204);
+    });
+
+    it('relatório com filtro de produto conta só os pedidos que têm o produto', async () => {
+      const resposta = await api()
+        .get('/relatorios/vendas?produtoId=6')
+        .set(comoAdmin())
+        .expect(200);
+      const dados = corpo<{
+        totalVendas: number;
+        pecasVendidas: number;
+        faturamento: number;
+        ticketMedio: number;
+        faturamentoPorDia: { valor: number }[];
+        pedidosPorDia: { valor: number }[];
+      }>(resposta).dados;
+      const soma = (linhas: { valor: number }[]) =>
+        linhas.reduce((total, linha) => total + linha.valor, 0);
+
+      // só os 3 pedidos da Carla têm o produto 6 (1 unidade em cada)
+      expect(dados).toMatchObject({ totalVendas: 3, pecasVendidas: 3 });
+      expect(dados.ticketMedio).toBeCloseTo(dados.faturamento / 3, 2);
+      expect(soma(dados.faturamentoPorDia)).toBeCloseTo(dados.faturamento, 2);
+      expect(soma(dados.pedidosPorDia)).toBe(3);
+    });
+  });
 });

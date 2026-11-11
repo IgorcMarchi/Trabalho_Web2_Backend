@@ -10,7 +10,11 @@ import { useUsuario } from "../contexto/UsuarioContext";
 // Regras da avaliação (as mesmas que a API confere de novo no servidor)
 const schema = z.object({
   nota: z.coerce.number().min(1, "Escolha uma nota").max(5),
-  comentario: z.string().min(5, "Escreva pelo menos 5 letras"),
+  comentario: z
+    .string()
+    .trim()
+    .min(5, "Escreva pelo menos 5 letras")
+    .max(1000, "O comentário pode ter no máximo 1000 letras"),
 });
 
 // Formulário de avaliação. Recebe por props a função que vai ser
@@ -79,8 +83,9 @@ function FormFeedback({ aoEnviar }) {
         </p>
       )}
 
-      <label className="block font-bold mb-1">Nota</label>
+      <label htmlFor="feedback-nota" className="block font-bold mb-1">Nota</label>
       <select
+        id="feedback-nota"
         {...register("nota")}
         defaultValue=""
         className="w-full border-2 border-gray-200 dark:border-gray-700 rounded p-2"
@@ -96,8 +101,11 @@ function FormFeedback({ aoEnviar }) {
         <p className="text-red-600 text-sm mt-1">{errors.nota.message}</p>
       )}
 
-      <label className="block font-bold mb-1 mt-4">Comentário</label>
+      <label htmlFor="feedback-comentario" className="block font-bold mb-1 mt-4">
+        Comentário
+      </label>
       <textarea
+        id="feedback-comentario"
         {...register("comentario")}
         rows="3"
         className="w-full border-2 border-gray-200 dark:border-gray-700 rounded p-2"

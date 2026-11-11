@@ -61,4 +61,20 @@ describe('PromocoesService', () => {
       service.estaValendo({ ...promocao, ativa: false }, '2026-11-15'),
     ).toBe(false);
   });
+
+  it('vencida e ainda ativa conta como aplicada: o preço continua nos produtos', () => {
+    const promocao = Object.assign(new Promocao(), {
+      ativa: true,
+      dataInicio: '2026-11-01',
+      dataFim: '2026-11-30',
+    });
+
+    // venceu, mas o desconto só sai quando desativar ou excluir
+    expect(service.foiAplicada(promocao, '2026-12-15')).toBe(true);
+    // ainda não começou: nada foi gravado
+    expect(service.foiAplicada(promocao, '2026-10-31')).toBe(false);
+    expect(
+      service.foiAplicada({ ...promocao, ativa: false }, '2026-11-15'),
+    ).toBe(false);
+  });
 });

@@ -57,8 +57,11 @@ export class RelatoriosService {
       );
     }
 
-    // o período vale para tudo; categoria e produto filtram os itens vendidos
+    // O período vale para tudo. Com categoria ou produto, os números falam
+    // só dos pedidos que têm esses itens (vendas, ticket médio e gráficos
+    // por dia), para não misturar bases diferentes na mesma tela.
     const periodo = { de: filtros.de, ate: filtros.ate };
+    const filtraItens = Boolean(filtros.categoriaId || filtros.produtoId);
 
     const [
       resumo,
@@ -70,7 +73,9 @@ export class RelatoriosService {
       clientesRecentes,
     ] = await Promise.all([
       this.relatoriosRepository.resumoPedidos(periodo),
-      this.relatoriosRepository.porDia(periodo),
+      filtraItens
+        ? this.relatoriosRepository.porDiaDosItens(filtros)
+        : this.relatoriosRepository.porDia(periodo),
       this.relatoriosRepository.totaisItens(filtros),
       this.relatoriosRepository.rankingProdutos(filtros),
       this.relatoriosRepository.vendasPorCategoria(filtros),
@@ -79,13 +84,13 @@ export class RelatoriosService {
     ]);
 
     const faturamento = arredondar(totaisItens.faturamento);
+    const vendas = filtraItens ? totaisItens.pedidos : resumo.quantidade;
 
     return {
-      totalVendas: resumo.quantidade,
+      totalVendas: vendas,
       faturamento,
       pecasVendidas: totaisItens.pecas,
-      ticketMedio:
-        resumo.quantidade > 0 ? arredondar(faturamento / resumo.quantidade) : 0,
+      ticketMedio: vendas > 0 ? arredondar(faturamento / vendas) : 0,
       faturamentoPorDia: porDia.map((d) => ({
         rotulo: d.dia,
         valor: arredondar(d.faturamento),

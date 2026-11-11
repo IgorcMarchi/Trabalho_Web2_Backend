@@ -45,7 +45,9 @@ export default function AdminRelatorios() {
     <div>
       <h1 className="text-2xl font-bold text-gray-800 dark:text-gray-100 mb-1">Relatórios</h1>
       <p className="text-gray-500 dark:text-gray-400 text-sm mb-6">
-        Pedidos cancelados não entram nas contas.
+        Pedidos cancelados não entram nas contas. Com uma categoria ou um
+        produto escolhido, os números e os gráficos contam só os pedidos que
+        têm esses itens.
       </p>
 
       {/* filtros */}
@@ -54,8 +56,9 @@ export default function AdminRelatorios() {
 
         <div className="flex flex-wrap gap-3">
           <div className="flex-1 min-w-[150px]">
-            <label className="block text-sm font-bold mb-1">De</label>
+            <label htmlFor="relatorio-de" className="block text-sm font-bold mb-1">De</label>
             <input
+              id="relatorio-de"
               type="date"
               value={de}
               onChange={(e) => setDe(e.target.value)}
@@ -64,8 +67,9 @@ export default function AdminRelatorios() {
           </div>
 
           <div className="flex-1 min-w-[150px]">
-            <label className="block text-sm font-bold mb-1">Até</label>
+            <label htmlFor="relatorio-ate" className="block text-sm font-bold mb-1">Até</label>
             <input
+              id="relatorio-ate"
               type="date"
               value={ate}
               onChange={(e) => setAte(e.target.value)}
@@ -74,8 +78,11 @@ export default function AdminRelatorios() {
           </div>
 
           <div className="flex-1 min-w-[150px]">
-            <label className="block text-sm font-bold mb-1">Categoria</label>
+            <label htmlFor="relatorio-categoria" className="block text-sm font-bold mb-1">
+              Categoria
+            </label>
             <select
+              id="relatorio-categoria"
               value={filtroCategoria}
               onChange={(e) => setFiltroCategoria(e.target.value)}
               className="w-full border-2 border-gray-200 dark:border-gray-700 rounded p-2"
@@ -90,8 +97,11 @@ export default function AdminRelatorios() {
           </div>
 
           <div className="flex-1 min-w-[180px]">
-            <label className="block text-sm font-bold mb-1">Produto</label>
+            <label htmlFor="relatorio-produto" className="block text-sm font-bold mb-1">
+              Produto
+            </label>
             <select
+              id="relatorio-produto"
               value={filtroProduto}
               onChange={(e) => setFiltroProduto(e.target.value)}
               className="w-full border-2 border-gray-200 dark:border-gray-700 rounded p-2"

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCarrinho } from "../contexto/CarrinhoContext";
+import { MAXIMO_POR_ITEM, useCarrinho } from "../contexto/CarrinhoContext";
 import { precoFinal, temPromocao, porcentagemDesconto } from "../dados/precos";
 
 // Uma linha do carrinho. Recebe o item por props.
@@ -10,6 +10,14 @@ function ItemCarrinho({ item }) {
 
   const preco = precoFinal(item);
   const noLimiteDoEstoque = item.estoque !== undefined && item.quantidade >= item.estoque;
+  const noLimitePorProduto = item.quantidade >= MAXIMO_POR_ITEM;
+
+  let motivoDoLimite;
+  if (noLimiteDoEstoque) {
+    motivoDoLimite = "Não há mais unidades em estoque";
+  } else if (noLimitePorProduto) {
+    motivoDoLimite = `No máximo ${MAXIMO_POR_ITEM} unidades por produto`;
+  }
 
   return (
     <div
@@ -45,6 +53,7 @@ function ItemCarrinho({ item }) {
       <div className="flex items-center gap-2">
         <button
           onClick={() => mudarQuantidade(item.id, item.quantidade - 1)}
+          aria-label={`Diminuir a quantidade de ${item.nome}`}
           className="bg-gray-200 dark:bg-gray-600 w-8 h-8 rounded font-bold hover:bg-gray-300 dark:hover:bg-gray-500"
         >
           -
@@ -52,8 +61,9 @@ function ItemCarrinho({ item }) {
         <span className="w-8 text-center font-bold">{item.quantidade}</span>
         <button
           onClick={() => mudarQuantidade(item.id, item.quantidade + 1)}
-          disabled={noLimiteDoEstoque}
-          title={noLimiteDoEstoque ? "Não há mais unidades em estoque" : undefined}
+          disabled={Boolean(motivoDoLimite)}
+          title={motivoDoLimite}
+          aria-label={`Aumentar a quantidade de ${item.nome}`}
           className="bg-gray-200 dark:bg-gray-600 w-8 h-8 rounded font-bold hover:bg-gray-300 dark:hover:bg-gray-500 disabled:opacity-40 disabled:cursor-not-allowed"
         >
           +

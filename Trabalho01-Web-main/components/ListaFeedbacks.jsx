@@ -22,9 +22,13 @@ function ListaFeedbacks({ lista, media, total }) {
   const mediaFinal = media ?? soma / lista.length;
   const quantidade = total ?? lista.length;
 
+  // a API manda no máximo 50 de cada vez: com mais do que isso, a lista
+  // mostra as mais recentes (e, sem a média da API, a média é só delas)
+  const mostraSoParte = quantidade > lista.length;
+
   return (
     <div>
-      <p className="mb-4">
+      <p className={mostraSoParte ? "mb-1" : "mb-4"}>
         <span className="text-orange-500 text-xl">
           {estrelas(Math.round(mediaFinal))}
         </span>{" "}
@@ -33,6 +37,13 @@ function ListaFeedbacks({ lista, media, total }) {
           ({quantidade} {quantidade === 1 ? "avaliação" : "avaliações"})
         </span>
       </p>
+
+      {mostraSoParte && (
+        <p className="text-gray-500 dark:text-gray-400 text-sm mb-4">
+          Mostrando as {lista.length} mais recentes
+          {media === undefined && " (a média acima é dessas avaliações)"}.
+        </p>
+      )}
 
       <div className="flex flex-col gap-3">
         {lista.map((feedback, indice) => (

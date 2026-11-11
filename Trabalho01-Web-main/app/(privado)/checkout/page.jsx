@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
+import Carregando from "../../../components/Carregando";
 import { useCarrinho } from "../../../contexto/CarrinhoContext";
 import { useUsuario } from "../../../contexto/UsuarioContext";
 import { criarPedido } from "../../../lib/pedidos";
@@ -14,20 +15,42 @@ import { precoFinal } from "../../../dados/precos";
 // Se o campo não passar na regra, a mensagem aparece embaixo dele.
 // (A API confere as mesmas regras de novo: o navegador não é confiável.)
 const schema = z.object({
-  nome: z.string().min(3, "O nome precisa ter pelo menos 3 letras"),
+  nome: z
+    .string()
+    .trim()
+    .min(3, "O nome precisa ter pelo menos 3 letras")
+    .max(120, "O nome pode ter no máximo 120 letras"),
   email: z.string().email("Digite um e-mail válido"),
   telefone: z
     .string()
+    .trim()
     .regex(/^[\d\s()+-]{10,20}$/, "Digite o telefone com DDD (só números, espaço, parênteses ou traço)"),
-  cep: z.string().regex(/^\d{5}-?\d{3}$/, "O CEP precisa ter 8 números (ex.: 85892-000)"),
-  endereco: z.string().min(5, "Digite o endereço completo"),
-  cidade: z.string().min(3, "Digite a cidade"),
+  cep: z.string().trim().regex(/^\d{5}-?\d{3}$/, "O CEP precisa ter 8 números (ex.: 85892-000)"),
+  endereco: z
+    .string()
+    .trim()
+    .min(5, "Digite o endereço completo")
+    .max(200, "O endereço pode ter no máximo 200 letras"),
+  cidade: z
+    .string()
+    .trim()
+    .min(3, "Digite a cidade")
+    .max(100, "A cidade pode ter no máximo 100 letras"),
   formaPagamento: z.string().min(1, "Escolha a forma de pagamento"),
 });
 
 // Checkout (rota /checkout)
 export default function Checkout() {
-  const { itens, total, limpar, podeFinalizar, verificando, verificarDeNovo } = useCarrinho();
+  const {
+    itens,
+    carregou,
+    total,
+    limpar,
+    podeFinalizar,
+    verificando,
+    erroVerificacao,
+    verificarDeNovo,
+  } = useCarrinho();
   const { usuario } = useUsuario();
   const [pedidoCriado, setPedidoCriado] = useState(null);
   const [erro, setErro] = useState("");
@@ -99,6 +122,11 @@ export default function Checkout() {
   // dentro do grupo (privado), e o layout desse grupo + o proxy.js já
   // mandam para o /login quem não está autenticado.
 
+  // espera ler o carrinho salvo (senão o F5 mostraria "vazio" por um instante)
+  if (!carregou) {
+    return <Carregando texto="Carregando seu carrinho..." />;
+  }
+
   // não deixa finalizar compra sem nada no carrinho
   if (itens.length === 0) {
     return (
@@ -136,10 +164,11 @@ export default function Checkout() {
       <div className="flex flex-wrap gap-6">
         <form
           onSubmit={handleSubmit(finalizar)}
-          className="bg-white dark:bg-gray-800 border-2 border-gray-200 dark:border-gray-700 rounded-lg p-6 flex-1 min-w-[320px]"
+          className="bg-white dark:bg-gray-800 border-2 border-gray-200 dark:border-gray-700 rounded-lg p-6 flex-1 sm:min-w-[320px]"
         >
-          <label className="block font-bold mb-1">Nome completo</label>
+          <label htmlFor="nome" className="block font-bold mb-1">Nome completo</label>
           <input
+            id="nome"
             {...register("nome")}
             className="w-full border-2 border-gray-200 dark:border-gray-700 rounded p-2"
           />
@@ -147,9 +176,10 @@ export default function Checkout() {
             <p className="text-red-600 text-sm mt-1">{errors.nome.message}</p>
           )}
 
-          <label className="block font-bold mb-1 mt-4">E-mail</label>
+          <label htmlFor="email" className="block font-bold mb-1 mt-4">E-mail</label>
           {/* o pedido fica na conta de quem está logado (vem do token) */}
           <input
+            id="email"
             {...register("email")}
             readOnly
             className="w-full border-2 border-gray-200 dark:border-gray-700 rounded p-2 bg-gray-50 dark:bg-gray-900"
@@ -161,8 +191,9 @@ export default function Checkout() {
             <p className="text-red-600 text-sm mt-1">{errors.email.message}</p>
           )}
 
-          <label className="block font-bold mb-1 mt-4">Telefone</label>
+          <label htmlFor="telefone" className="block font-bold mb-1 mt-4">Telefone</label>
           <input
+            id="telefone"
             {...register("telefone")}
             placeholder="(45) 99999-0000"
             className="w-full border-2 border-gray-200 dark:border-gray-700 rounded p-2"
@@ -173,8 +204,9 @@ export default function Checkout() {
             </p>
           )}
 
-          <label className="block font-bold mb-1 mt-4">CEP</label>
+          <label htmlFor="cep" className="block font-bold mb-1 mt-4">CEP</label>
           <input
+            id="cep"
             {...register("cep")}
             placeholder="85892-000"
             className="w-full border-2 border-gray-200 dark:border-gray-700 rounded p-2"
@@ -183,8 +215,9 @@ export default function Checkout() {
             <p className="text-red-600 text-sm mt-1">{errors.cep.message}</p>
           )}
 
-          <label className="block font-bold mb-1 mt-4">Endereço</label>
+          <label htmlFor="endereco" className="block font-bold mb-1 mt-4">Endereço</label>
           <input
+            id="endereco"
             {...register("endereco")}
             className="w-full border-2 border-gray-200 dark:border-gray-700 rounded p-2"
           />
@@ -194,8 +227,9 @@ export default function Checkout() {
             </p>
           )}
 
-          <label className="block font-bold mb-1 mt-4">Cidade</label>
+          <label htmlFor="cidade" className="block font-bold mb-1 mt-4">Cidade</label>
           <input
+            id="cidade"
             {...register("cidade")}
             className="w-full border-2 border-gray-200 dark:border-gray-700 rounded p-2"
           />
@@ -203,10 +237,11 @@ export default function Checkout() {
             <p className="text-red-600 text-sm mt-1">{errors.cidade.message}</p>
           )}
 
-          <label className="block font-bold mb-1 mt-4">
+          <label htmlFor="formaPagamento" className="block font-bold mb-1 mt-4">
             Forma de pagamento
           </label>
           <select
+            id="formaPagamento"
             {...register("formaPagamento")}
             defaultValue=""
             className="w-full border-2 border-gray-200 dark:border-gray-700 rounded p-2"
@@ -233,7 +268,9 @@ export default function Checkout() {
           </button>
           {!podeFinalizar && !verificando && (
             <p className="text-sm text-yellow-800 dark:text-yellow-300 mt-2">
-              Há itens sem estoque no carrinho.{" "}
+              {erroVerificacao
+                ? "Não foi possível conferir o carrinho com a loja."
+                : "Há itens sem estoque no carrinho."}{" "}
               <Link href="/carrinho" className="font-bold underline">
                 Revisar o carrinho
               </Link>

@@ -24,7 +24,7 @@ const limparTexto = ({ value }: { value: unknown }) =>
 export class CriarPedidoDto {
   @ApiProperty({ example: 'Ana Souza', description: 'Nome de quem recebe' })
   @Transform(limparTexto)
-  @IsString()
+  @IsString({ message: 'nome deve ser um texto' })
   @Length(3, 120, { message: 'nome deve ter entre 3 e 120 caracteres' })
   nome: string;
 
@@ -44,13 +44,13 @@ export class CriarPedidoDto {
 
   @ApiProperty({ example: 'Rua das Flores, 100' })
   @Transform(limparTexto)
-  @IsString()
+  @IsString({ message: 'endereco deve ser um texto' })
   @Length(5, 200, { message: 'endereco deve ter entre 5 e 200 caracteres' })
   endereco: string;
 
   @ApiProperty({ example: 'Santa Helena' })
   @Transform(limparTexto)
-  @IsString()
+  @IsString({ message: 'cidade deve ser um texto' })
   @Length(3, 100, { message: 'cidade deve ter entre 3 e 100 caracteres' })
   cidade: string;
 
@@ -69,7 +69,9 @@ export class CriarPedidoDto {
   })
   @IsArray({ message: 'itens deve ser uma lista' })
   @ArrayMinSize(1, { message: 'o pedido precisa de pelo menos 1 item' })
-  @ArrayMaxSize(50)
+  @ArrayMaxSize(50, {
+    message: 'o pedido pode ter no máximo 50 produtos diferentes',
+  })
   @ValidateNested({ each: true })
   @Type(() => ItemCarrinhoDto)
   itens: ItemCarrinhoDto[];

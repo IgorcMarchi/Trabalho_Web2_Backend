@@ -28,13 +28,14 @@ export class AvaliacoesService {
     filtros: ListarAvaliacoesDto,
     usuario?: UsuarioToken,
   ): Promise<Pagina<AvaliacaoRespostaDto>> {
+    const admin = usuario?.papel === Papel.ADMIN;
     const { skip, take } = calcularSalto(filtros);
     const [itens, total] = await this.avaliacoesRepository.listar(
       filtros.produtoId,
       skip,
       take,
+      admin,
     );
-    const admin = usuario?.papel === Papel.ADMIN;
 
     return montarPagina(
       itens.map((avaliacao) => this.paraResposta(avaliacao, admin)),

@@ -11,6 +11,17 @@ export interface FiltrosPedidos {
   take: number;
 }
 
+// Nas listagens paginadas, o SQL ordena só pelo pedido. Com skip/take,
+// ordenar também pelos itens fazia o TypeORM paginar por linha
+// pedido x item: a página contava itens, e pedidos sumiam da lista.
+// Por isso os itens de cada pedido são ordenados aqui, depois da consulta.
+function ordenarItens(pedidos: Pedido[]): Pedido[] {
+  for (const pedido of pedidos) {
+    pedido.itens.sort((a, b) => a.id - b.id);
+  }
+  return pedidos;
+}
+
 @Injectable()
 export class PedidosRepository {
   constructor(
@@ -36,23 +47,24 @@ export class PedidosRepository {
     });
   }
 
-  listarDoUsuario(
+  async listarDoUsuario(
     usuarioId: number,
     skip: number,
     take: number,
   ): Promise<[Pedido[], number]> {
-    return this.repositorio.findAndCount({
+    const [pedidos, total] = await this.repositorio.findAndCount({
       where: { usuarioId },
       relations: { itens: true },
-      order: { id: 'DESC', itens: { id: 'ASC' } },
+      order: { id: 'DESC' },
       skip,
       take,
     });
+    return [ordenarItens(pedidos), total];
   }
 
   // Busca por nome, e-mail OU número: precisa de OR entre colunas de
   // tabelas diferentes, por isso aqui usamos o QueryBuilder.
-  listarTodos({
+  async listarTodos({
     busca,
     status,
     skip,
@@ -78,12 +90,12 @@ export class PedidosRepository {
       );
     }
 
-    return consulta
+    const [pedidos, total] = await consulta
       .orderBy('pedido.id', 'DESC')
-      .addOrderBy('item.id', 'ASC')
       .skip(skip)
       .take(take)
       .getManyAndCount();
+    return [ordenarItens(pedidos), total];
   }
 
   async atualizarStatus(

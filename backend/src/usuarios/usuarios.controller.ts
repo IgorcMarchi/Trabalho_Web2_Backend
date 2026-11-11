@@ -31,7 +31,7 @@ export class UsuariosController {
   @ApiOperation({
     summary: 'Listar usuários [ADMIN]',
     description:
-      'Lista paginada, mais recentes primeiro. Usada no dashboard e nos relatórios (clientes cadastrados). A senha nunca aparece.',
+      'Lista paginada, mais recentes primeiro. A senha nunca aparece. (O painel conta os clientes pelos relatórios; esta rota é para consulta pelo Swagger.)',
   })
   @ApiSucesso(Usuario, { paginada: true })
   @ApiErros(400)

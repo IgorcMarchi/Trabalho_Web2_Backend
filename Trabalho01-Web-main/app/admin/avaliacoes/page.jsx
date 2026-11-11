@@ -25,6 +25,7 @@ export default function AdminAvaliacoes() {
   const [paginaProdutos, setPaginaProdutos] = useState(1);
   const [paginaSite, setPaginaSite] = useState(1);
   const [erroAcao, setErroAcao] = useState("");
+  const [sucesso, setSucesso] = useState("");
 
   // com token de ADMIN, a API devolve também o e-mail de quem avaliou
   const avaliacoesReq = useRequisicao(
@@ -44,9 +45,11 @@ export default function AdminAvaliacoes() {
 
   async function remover(acao, recarregar) {
     setErroAcao("");
+    setSucesso("");
     try {
       await acao();
       recarregar();
+      setSucesso("Avaliação removida.");
     } catch (e) {
       setErroAcao(e.message);
     }
@@ -110,10 +113,17 @@ export default function AdminAvaliacoes() {
         </p>
       )}
 
+      {sucesso && (
+        <p className="bg-green-100 border-2 border-green-300 text-green-800 rounded p-3 mb-4">
+          {sucesso}
+        </p>
+      )}
+
       {aba === "PRODUTOS" ? (
         <div>
           <div className="bg-white dark:bg-gray-800 border-2 border-gray-200 dark:border-gray-700 rounded-lg p-4 mb-4">
             <select
+              aria-label="Filtrar avaliações por produto"
               value={filtroProduto}
               onChange={(e) => {
                 setFiltroProduto(e.target.value);

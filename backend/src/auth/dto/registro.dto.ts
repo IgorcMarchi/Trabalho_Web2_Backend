@@ -21,7 +21,7 @@ export class RegistroDto {
   @ApiProperty({ example: 'ana@email.com', maxLength: 160 })
   @Transform(normalizarEmail)
   @IsEmail({}, { message: 'email deve ser um e-mail válido' })
-  @MaxLength(160)
+  @MaxLength(160, { message: 'email deve ter no máximo 160 caracteres' })
   email: string;
 
   // o bcrypt só considera os primeiros 72 bytes, por isso o limite

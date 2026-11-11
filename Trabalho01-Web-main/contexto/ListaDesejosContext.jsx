@@ -18,6 +18,11 @@ export function ListaDesejosProvider({ children }) {
   const [erro, setErro] = useState("");
   const [tentativa, setTentativa] = useState(0);
 
+  // id do usuário cuja lista já chegou do servidor. Enquanto não for o de
+  // quem está logado, a lista ainda está carregando (sem isso, a tela
+  // mostrava "lista vazia" por um instante antes de a busca começar).
+  const [listaDe, setListaDe] = useState(null);
+
   // busca a lista quando alguém entra (e esvazia quando sai)
   const idDoUsuario = usuario?.id;
 
@@ -25,6 +30,7 @@ export function ListaDesejosProvider({ children }) {
     if (!idDoUsuario) {
       setItens([]);
       setErro("");
+      setListaDe(null);
       return;
     }
 
@@ -40,7 +46,10 @@ export function ListaDesejosProvider({ children }) {
         if (valeAinda) setErro(e.message);
       })
       .finally(() => {
-        if (valeAinda) setCarregando(false);
+        if (valeAinda) {
+          setCarregando(false);
+          setListaDe(idDoUsuario);
+        }
       });
 
     return () => {
@@ -54,7 +63,9 @@ export function ListaDesejosProvider({ children }) {
   }
 
   // Atualiza a tela na hora (otimista) e confirma com a API.
-  // Se a API recusar, desfaz e avisa.
+  // Se a API recusar, desfaz e avisa. O aviso é um alert de propósito:
+  // o coração aparece em vários cards ao mesmo tempo, então não há um
+  // lugar único na tela para mostrar a mensagem.
   async function adicionar(produto) {
     if (!usuario || estaNaLista(produto.id)) {
       return;
@@ -96,7 +107,7 @@ export function ListaDesejosProvider({ children }) {
     <ListaDesejosContext.Provider
       value={{
         itens,
-        carregando,
+        carregando: carregando || (Boolean(idDoUsuario) && listaDe !== idDoUsuario),
         erro,
         recarregar: () => setTentativa((t) => t + 1),
         adicionar,

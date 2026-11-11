@@ -7,6 +7,7 @@ function BarraBusca({ valor, aoMudar }) {
       value={valor}
       onChange={(e) => aoMudar(e.target.value)}
       placeholder="Buscar produto..."
+      aria-label="Buscar produto"
       className="w-full border-2 border-gray-300 dark:border-gray-600 rounded-lg p-3 bg-white dark:bg-gray-800"
     />
   );

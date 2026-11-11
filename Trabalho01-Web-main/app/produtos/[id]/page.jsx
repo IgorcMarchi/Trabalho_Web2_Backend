@@ -32,9 +32,10 @@ export default function DetalheProduto() {
     [params.id]
   );
 
-  // esse useEffect reage a mudança: toda vez que o id da URL muda
-  // ele roda de novo. O return é o cleanup, que roda quando a gente
-  // sai do produto ou troca pra outro.
+  // Exemplo de useEffect com cleanup, mantido de propósito (é o exemplo
+  // citado na documentação da etapa 1): toda vez que o id da URL muda ele
+  // roda de novo, e o return (cleanup) roda quando a gente sai do produto
+  // ou troca pra outro. Os avisos aparecem só no console do navegador (F12).
   useEffect(() => {
     console.log("abriu o produto " + params.id);
 
@@ -45,8 +46,9 @@ export default function DetalheProduto() {
 
   const produto = produtoReq.dados;
 
-  // id que não existe, produto excluído ou inativo: a API responde 404
-  if (produtoReq.statusErro === 404) {
+  // id que não existe, produto excluído ou inativo: a API responde 404.
+  // Id que nem é número (ex.: /produtos/abc): a API responde 400.
+  if (produtoReq.statusErro === 404 || produtoReq.statusErro === 400) {
     return (
       <div>
         <MensagemErro texto="Não achamos esse produto" />

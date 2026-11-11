@@ -1,6 +1,12 @@
 import { ApiProperty, ApiPropertyOptional, PartialType } from '@nestjs/swagger';
 import { Transform } from 'class-transformer';
-import { IsBoolean, IsOptional, IsString, Length } from 'class-validator';
+import {
+  IsBoolean,
+  IsOptional,
+  IsString,
+  Length,
+  ValidateIf,
+} from 'class-validator';
 import { Categoria } from '../categoria.entity';
 
 // "true"/"false" da query string viram boolean de verdade
@@ -20,13 +26,17 @@ export class CriarCategoriaDto {
   nome: string;
 
   @ApiPropertyOptional({ example: true, default: true })
-  @IsOptional()
+  // pode faltar, mas não pode vir null (o @IsOptional deixaria passar)
+  @ValidateIf((_, valor) => valor !== undefined)
   @IsBoolean({ message: 'ativa deve ser true ou false' })
   ativa?: boolean;
 }
 
-// PATCH: todos os campos do cadastro, mas opcionais
-export class AtualizarCategoriaDto extends PartialType(CriarCategoriaDto) {}
+// PATCH: todos os campos do cadastro, mas opcionais.
+// skipNullProperties: false = campo ausente pode, campo null não (400).
+export class AtualizarCategoriaDto extends PartialType(CriarCategoriaDto, {
+  skipNullProperties: false,
+}) {}
 
 export class ListarCategoriasDto {
   @ApiPropertyOptional({

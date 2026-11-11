@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useContext, useState, useEffect } from "react";
+import { createContext, useCallback, useContext, useState, useEffect } from "react";
 import * as auth from "../lib/auth";
 import { EVENTO_SESSAO_EXPIRADA } from "../lib/api";
 
@@ -34,16 +34,29 @@ export function UsuarioProvider({ children }) {
   const [usuario, setUsuario] = useState(null);
   const [carregou, setCarregou] = useState(false);
 
+  // quantas vezes a pessoa clicou em "Sair" nesta aba. O carrinho observa
+  // esse número para se esvaziar só no logout de verdade (e não quando a
+  // sessão apenas vence).
+  const [saidas, setSaidas] = useState(0);
+
+  // Pergunta ao servidor quem está logado (o token fica num cookie httpOnly,
+  // só o servidor consegue ler). O useCallback mantém a mesma função entre
+  // os renders, para quem a usa num useEffect não buscar de novo à toa.
+  const conferirSessao = useCallback(
+    () =>
+      auth
+        .buscarSessao()
+        .then(setUsuario)
+        .catch(() => setUsuario(null))
+        .finally(() => setCarregou(true)),
+    []
+  );
+
   // ao abrir o site (e a cada F5), pergunta ao servidor quem está logado
   useEffect(() => {
     CHAVES_ANTIGAS.forEach((chave) => localStorage.removeItem(chave));
-
-    auth
-      .buscarSessao()
-      .then(setUsuario)
-      .catch(() => setUsuario(null))
-      .finally(() => setCarregou(true));
-  }, []);
+    conferirSessao();
+  }, [conferirSessao]);
 
   // a API avisou que o token venceu (1 hora): volta a ser visitante
   useEffect(() => {
@@ -75,9 +88,16 @@ export function UsuarioProvider({ children }) {
     }
   }
 
+  // devolve { ok: true } ou { ok: false, erro: "..." } (ex.: sem conexão)
   async function sair() {
-    // apaga o cookie com o token (no servidor do Next)
-    await auth.sair().catch(() => {});
+    try {
+      // apaga o cookie com o token (no servidor do Next)
+      await auth.sair();
+    } catch (e) {
+      // sem apagar o cookie, a pessoa voltaria logada no próximo F5:
+      // melhor avisar do que fingir que saiu
+      return { ok: false, erro: e.message };
+    }
 
     // e apaga do localStorage o que era da sessão de quem estava logado.
     // Não usamos localStorage.clear() para não apagar preferências do
@@ -85,6 +105,8 @@ export function UsuarioProvider({ children }) {
     CHAVES_DA_SESSAO.forEach((chave) => localStorage.removeItem(chave));
 
     setUsuario(null);
+    setSaidas((quantidade) => quantidade + 1);
+    return { ok: true };
   }
 
   return (
@@ -96,6 +118,9 @@ export function UsuarioProvider({ children }) {
         // Sem isso, quem dá F5 numa página privada seria expulso,
         // porque no primeiro render o usuario ainda é null.
         carregou,
+        // a tela de login pergunta de novo quando o proxy.js manda para lá
+        conferirSessao,
+        saidas,
         cadastrar,
         entrar,
         sair,

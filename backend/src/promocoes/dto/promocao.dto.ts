@@ -12,6 +12,7 @@ import {
   Length,
   Matches,
   Min,
+  ValidateIf,
 } from 'class-validator';
 import { Promocao } from '../promocao.entity';
 import { AlvoPromocao, TipoDesconto } from '../promocao.enums';
@@ -79,7 +80,7 @@ export class CriarPromocaoDto {
   })
   @IsOptional()
   @IsInt({ message: 'categoriaId deve ser um número inteiro' })
-  @Min(1)
+  @Min(1, { message: 'categoriaId deve ser no mínimo 1' })
   categoriaId?: number;
 
   @ApiPropertyOptional({
@@ -88,17 +89,21 @@ export class CriarPromocaoDto {
   })
   @IsOptional()
   @IsInt({ message: 'produtoId deve ser um número inteiro' })
-  @Min(1)
+  @Min(1, { message: 'produtoId deve ser no mínimo 1' })
   produtoId?: number;
 
   @ApiPropertyOptional({ example: true, default: true })
-  @IsOptional()
+  // pode faltar, mas não pode vir null (o @IsOptional deixaria passar)
+  @ValidateIf((_, valor) => valor !== undefined)
   @IsBoolean({ message: 'ativa deve ser true ou false' })
   ativa?: boolean;
 }
 
-// PATCH: ativar/desativar = { "ativa": false }
-export class AtualizarPromocaoDto extends PartialType(CriarPromocaoDto) {}
+// PATCH: ativar/desativar = { "ativa": false }.
+// skipNullProperties: false = campo ausente pode, campo null não (400).
+export class AtualizarPromocaoDto extends PartialType(CriarPromocaoDto, {
+  skipNullProperties: false,
+}) {}
 
 export enum SituacaoPromocao {
   VALENDO = 'VALENDO',

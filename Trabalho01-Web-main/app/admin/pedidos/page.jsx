@@ -35,17 +35,24 @@ export default function AdminPedidos() {
 
   const dados = pedidosReq.dados;
 
+  // sem o resumo (erro na API), a lista de pedidos continua funcionando
+  let textoDoResumo = "Carregando resumo...";
+  if (resumoReq.dados) {
+    textoDoResumo = `${resumoReq.dados.totalPedidos} pedido(s) - faturamento de R$ ${resumoReq.dados.faturamento.toFixed(2)}`;
+  } else if (resumoReq.erro) {
+    textoDoResumo = "Não foi possível carregar o resumo.";
+  }
+
   return (
     <div>
       <h1 className="text-2xl font-bold text-gray-800 dark:text-gray-100 mb-1">Pedidos</h1>
       <p className="text-gray-500 dark:text-gray-400 text-sm mb-6">
-        {resumoReq.dados
-          ? `${resumoReq.dados.totalPedidos} pedido(s) - faturamento de R$ ${resumoReq.dados.faturamento.toFixed(2)}`
-          : "Carregando resumo..."}
+        {textoDoResumo}
       </p>
 
       <div className="bg-white dark:bg-gray-800 border-2 border-gray-200 dark:border-gray-700 rounded-lg p-4 mb-4 flex flex-wrap gap-3">
         <input
+          aria-label="Buscar por cliente, e-mail ou número do pedido"
           value={busca}
           onChange={(e) => {
             setBusca(e.target.value);
@@ -56,6 +63,7 @@ export default function AdminPedidos() {
         />
 
         <select
+          aria-label="Filtrar por status"
           value={filtroStatus}
           onChange={(e) => {
             setFiltroStatus(e.target.value);
