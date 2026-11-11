@@ -7,16 +7,19 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { useCarrinho } from "../../../contexto/CarrinhoContext";
 import { useUsuario } from "../../../contexto/UsuarioContext";
-import { usePedidos } from "../../../contexto/PedidosContext";
+import { criarPedido } from "../../../lib/pedidos";
 import { precoFinal } from "../../../dados/precos";
 
 // Aqui ficam as regras de validação do formulário.
 // Se o campo não passar na regra, a mensagem aparece embaixo dele.
+// (A API confere as mesmas regras de novo: o navegador não é confiável.)
 const schema = z.object({
   nome: z.string().min(3, "O nome precisa ter pelo menos 3 letras"),
   email: z.string().email("Digite um e-mail válido"),
-  telefone: z.string().min(10, "Digite o telefone com DDD"),
-  cep: z.string().min(8, "O CEP precisa ter 8 números"),
+  telefone: z
+    .string()
+    .regex(/^[\d\s()+-]{10,20}$/, "Digite o telefone com DDD (só números, espaço, parênteses ou traço)"),
+  cep: z.string().regex(/^\d{5}-?\d{3}$/, "O CEP precisa ter 8 números (ex.: 85892-000)"),
   endereco: z.string().min(5, "Digite o endereço completo"),
   cidade: z.string().min(3, "Digite a cidade"),
   formaPagamento: z.string().min(1, "Escolha a forma de pagamento"),
@@ -24,15 +27,15 @@ const schema = z.object({
 
 // Checkout (rota /checkout)
 export default function Checkout() {
-  const { itens, total, limpar } = useCarrinho();
+  const { itens, total, limpar, podeFinalizar, verificando, verificarDeNovo } = useCarrinho();
   const { usuario } = useUsuario();
-  const { adicionarPedido } = usePedidos();
-  const [enviado, setEnviado] = useState(false);
+  const [pedidoCriado, setPedidoCriado] = useState(null);
+  const [erro, setErro] = useState("");
 
   const {
     register,
     handleSubmit,
-    formState: { errors },
+    formState: { errors, isSubmitting },
   } = useForm({
     resolver: zodResolver(schema),
     // já preenche o nome e o email de quem está logado.
@@ -43,27 +46,36 @@ export default function Checkout() {
     },
   });
 
-  function finalizar(dados) {
-    // não tem back-end, então os dados da entrega só vão pro console
-    console.log("pedido:", dados);
+  async function finalizar(dados) {
+    setErro("");
 
-    // ATENÇÃO: o pedido tem que ser salvo ANTES de limpar o carrinho.
-    // Se limpar primeiro, o pedido fica sem nenhum produto.
-    adicionarPedido(dados, itens, total);
+    try {
+      // Vai para a API só produto + quantidade. Preço e total quem
+      // calcula é o servidor, com os dados do banco, e o estoque é
+      // baixado lá dentro de uma transação.
+      const pedido = await criarPedido(dados, itens);
 
-    limpar();
-    setEnviado(true);
+      // só limpa o carrinho DEPOIS que o pedido foi gravado
+      limpar();
+      setPedidoCriado(pedido);
+    } catch (e) {
+      // 409 = acabou o estoque; 404 = produto saiu da loja.
+      // Confere o carrinho de novo para mostrar o aviso no item.
+      setErro(e.message);
+      verificarDeNovo();
+    }
   }
 
-  // tela de confirmação depois que o formulário foi enviado certo
-  if (enviado) {
+  // tela de confirmação depois que o pedido foi gravado
+  if (pedidoCriado) {
     return (
       <div className="text-center py-10">
         <h1 className="text-3xl font-bold text-green-700 mb-2">
-          Pedido realizado!
+          Pedido #{pedidoCriado.numero} realizado!
         </h1>
         <p className="text-gray-600 dark:text-gray-400 mb-6">
-          Obrigado pela compra. Seu pedido foi salvo no seu histórico.
+          Obrigado pela compra. Total de R$ {pedidoCriado.total.toFixed(2)}. Seu
+          pedido foi salvo no seu histórico.
         </p>
         <div className="flex gap-3 justify-center flex-wrap">
           <Link
@@ -111,6 +123,16 @@ export default function Checkout() {
         Finalizar compra
       </h1>
 
+      {erro && (
+        <div className="bg-red-100 border-2 border-red-300 text-red-700 rounded p-3 mb-4">
+          <p className="font-bold">Não foi possível finalizar o pedido</p>
+          <p className="text-sm">{erro}</p>
+          <Link href="/carrinho" className="text-sm font-bold underline">
+            Revisar o carrinho
+          </Link>
+        </div>
+      )}
+
       <div className="flex flex-wrap gap-6">
         <form
           onSubmit={handleSubmit(finalizar)}
@@ -126,10 +148,15 @@ export default function Checkout() {
           )}
 
           <label className="block font-bold mb-1 mt-4">E-mail</label>
+          {/* o pedido fica na conta de quem está logado (vem do token) */}
           <input
             {...register("email")}
-            className="w-full border-2 border-gray-200 dark:border-gray-700 rounded p-2"
+            readOnly
+            className="w-full border-2 border-gray-200 dark:border-gray-700 rounded p-2 bg-gray-50 dark:bg-gray-900"
           />
+          <p className="text-gray-500 dark:text-gray-400 text-xs mt-1">
+            O pedido fica registrado na sua conta.
+          </p>
           {errors.email && (
             <p className="text-red-600 text-sm mt-1">{errors.email.message}</p>
           )}
@@ -137,6 +164,7 @@ export default function Checkout() {
           <label className="block font-bold mb-1 mt-4">Telefone</label>
           <input
             {...register("telefone")}
+            placeholder="(45) 99999-0000"
             className="w-full border-2 border-gray-200 dark:border-gray-700 rounded p-2"
           />
           {errors.telefone && (
@@ -148,6 +176,7 @@ export default function Checkout() {
           <label className="block font-bold mb-1 mt-4">CEP</label>
           <input
             {...register("cep")}
+            placeholder="85892-000"
             className="w-full border-2 border-gray-200 dark:border-gray-700 rounded p-2"
           />
           {errors.cep && (
@@ -193,12 +222,23 @@ export default function Checkout() {
             </p>
           )}
 
+          {/* travado enquanto envia (não cria o pedido duas vezes) e
+              enquanto o carrinho tiver item sem estoque */}
           <button
             type="submit"
-            className="w-full mt-6 bg-orange-500 text-white rounded py-3 font-bold hover:bg-orange-600"
+            disabled={isSubmitting || !podeFinalizar}
+            className="w-full mt-6 bg-orange-500 text-white rounded py-3 font-bold hover:bg-orange-600 disabled:bg-gray-400 disabled:cursor-not-allowed"
           >
-            Confirmar pedido
+            {isSubmitting ? "Enviando pedido..." : "Confirmar pedido"}
           </button>
+          {!podeFinalizar && !verificando && (
+            <p className="text-sm text-yellow-800 dark:text-yellow-300 mt-2">
+              Há itens sem estoque no carrinho.{" "}
+              <Link href="/carrinho" className="font-bold underline">
+                Revisar o carrinho
+              </Link>
+            </p>
+          )}
         </form>
 
         <div className="bg-white dark:bg-gray-800 border-2 border-gray-200 dark:border-gray-700 rounded-lg p-6 w-full md:w-72">
@@ -216,6 +256,9 @@ export default function Checkout() {
           <p className="border-t-2 border-gray-200 dark:border-gray-700 mt-3 pt-3 font-bold text-lg">
             Total:{" "}
             <span className="text-green-700">R$ {total.toFixed(2)}</span>
+          </p>
+          <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+            O valor final é confirmado pelo servidor.
           </p>
         </div>
       </div>

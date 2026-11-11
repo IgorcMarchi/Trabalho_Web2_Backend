@@ -2,11 +2,19 @@
 
 import ListaFeedbacks from "../../components/ListaFeedbacks";
 import FormFeedback from "../../components/FormFeedback";
-import { useFeedback } from "../../contexto/FeedbackContext";
+import Carregando from "../../components/Carregando";
+import MensagemErro from "../../components/MensagemErro";
+import { useRequisicao } from "../../hooks/useRequisicao";
+import { criarFeedback, listarFeedbacks } from "../../lib/avaliacoes";
 
 // Feedback do site (rota /feedback)
 export default function Feedback() {
-  const { feedbacksSite, adicionarFeedbackSite } = useFeedback();
+  const { dados, erro, recarregar } = useRequisicao(() => listarFeedbacks(), []);
+
+  async function enviar(feedback) {
+    await criarFeedback(feedback);
+    recarregar();
+  }
 
   return (
     <div>
@@ -19,11 +27,17 @@ export default function Feedback() {
 
       <div className="flex flex-col lg:flex-row gap-6">
         <div className="flex-1">
-          <ListaFeedbacks lista={feedbacksSite} />
+          {erro ? (
+            <MensagemErro texto={erro} aoTentarDeNovo={recarregar} />
+          ) : !dados ? (
+            <Carregando texto="Carregando avaliações..." />
+          ) : (
+            <ListaFeedbacks lista={dados.itens} total={dados.meta.total} />
+          )}
         </div>
 
         <div className="w-full lg:w-96">
-          <FormFeedback aoEnviar={adicionarFeedbackSite} />
+          <FormFeedback aoEnviar={enviar} />
         </div>
       </div>
     </div>

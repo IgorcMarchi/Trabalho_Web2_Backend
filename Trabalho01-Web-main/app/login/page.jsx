@@ -49,11 +49,14 @@ export default function Login() {
   const {
     register,
     handleSubmit,
-    formState: { errors },
+    formState: { errors, isSubmitting },
   } = useForm({ resolver: zodResolver(schema) });
 
-  function enviar(dados) {
-    const resultado = entrar(dados.email, dados.senha);
+  async function enviar(dados) {
+    setErro("");
+    // a API confere a senha (bcrypt) e devolve o token, que fica num
+    // cookie httpOnly. Erro: "E-mail ou senha inválidos." vem da API.
+    const resultado = await entrar(dados.email, dados.senha);
 
     if (resultado.ok) {
       setAcabouDeEntrar(true);
@@ -145,9 +148,10 @@ export default function Login() {
 
         <button
           type="submit"
-          className="w-full mt-6 bg-blue-700 text-white rounded py-3 font-bold hover:bg-blue-800"
+          disabled={isSubmitting}
+          className="w-full mt-6 bg-blue-700 text-white rounded py-3 font-bold hover:bg-blue-800 disabled:opacity-60"
         >
-          Entrar
+          {isSubmitting ? "Entrando..." : "Entrar"}
         </button>
 
         <p className="text-center text-sm mt-4">

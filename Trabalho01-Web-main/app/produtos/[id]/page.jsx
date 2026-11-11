@@ -9,10 +9,11 @@ import ListaFeedbacks from "../../../components/ListaFeedbacks";
 import FormFeedback from "../../../components/FormFeedback";
 import IconeCoracao from "../../../components/IconeCoracao";
 import { useCarrinho } from "../../../contexto/CarrinhoContext";
-import { useFeedback } from "../../../contexto/FeedbackContext";
 import { useUsuario } from "../../../contexto/UsuarioContext";
 import { useListaDesejos } from "../../../contexto/ListaDesejosContext";
-import { useProdutos } from "../../../contexto/ProdutosContext";
+import { useRequisicao } from "../../../hooks/useRequisicao";
+import { buscarProduto } from "../../../lib/produtos";
+import { criarAvaliacao, listarAvaliacoes } from "../../../lib/avaliacoes";
 import { precoFinal, temPromocao, porcentagemDesconto } from "../../../dados/precos";
 
 // Detalhes do produto (rota /produtos/[id])
@@ -21,12 +22,15 @@ export default function DetalheProduto() {
   const params = useParams();
   const router = useRouter();
   const { adicionar } = useCarrinho();
-  const { pegarFeedbacks, adicionarFeedbackProduto } = useFeedback();
-  const { usuario } = useUsuario();
+  const { usuario, carregou } = useUsuario();
   const listaDesejos = useListaDesejos();
-  const { pegarProduto, carregando, erro } = useProdutos();
 
-  const produto = pegarProduto(params.id);
+  // produto (com a média das notas) e as avaliações vêm da API
+  const produtoReq = useRequisicao(() => buscarProduto(params.id), [params.id]);
+  const avaliacoesReq = useRequisicao(
+    () => listarAvaliacoes({ produtoId: params.id }),
+    [params.id]
+  );
 
   // esse useEffect reage a mudança: toda vez que o id da URL muda
   // ele roda de novo. O return é o cleanup, que roda quando a gente
@@ -39,16 +43,10 @@ export default function DetalheProduto() {
     };
   }, [params.id]);
 
-  if (carregando) {
-    return <Carregando />;
-  }
+  const produto = produtoReq.dados;
 
-  if (erro) {
-    return <MensagemErro texto={erro} />;
-  }
-
-  // id que não existe, ou produto que o administrador excluiu
-  if (!produto) {
+  // id que não existe, produto excluído ou inativo: a API responde 404
+  if (produtoReq.statusErro === 404) {
     return (
       <div>
         <MensagemErro texto="Não achamos esse produto" />
@@ -62,11 +60,24 @@ export default function DetalheProduto() {
     );
   }
 
-  const feedbacks = pegarFeedbacks(params.id);
+  if (produtoReq.erro) {
+    return <MensagemErro texto={produtoReq.erro} aoTentarDeNovo={produtoReq.recarregar} />;
+  }
+
+  if (!produto) {
+    return <Carregando />;
+  }
+
   const favorito = listaDesejos.estaNaLista(produto.id);
   const promocao = temPromocao(produto);
+  const esgotado = produto.estoque === 0;
 
   function clicarCoracao() {
+    // sessão ainda sendo conferida: não manda para o login por engano
+    if (!carregou) {
+      return;
+    }
+
     if (!usuario) {
       router.push("/login");
       return;
@@ -77,6 +88,13 @@ export default function DetalheProduto() {
     } else {
       listaDesejos.adicionar(produto);
     }
+  }
+
+  // a avaliação vai para a API; depois recarrega a lista e a média
+  async function avaliar(feedback) {
+    await criarAvaliacao(params.id, feedback);
+    avaliacoesReq.recarregar();
+    produtoReq.recarregar();
   }
 
   return (
@@ -111,14 +129,19 @@ export default function DetalheProduto() {
             R$ {precoFinal(produto).toFixed(2)}
           </p>
 
+          <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+            {esgotado ? "Esgotado" : `${produto.estoque} unidade(s) em estoque`}
+          </p>
+
           <p className="text-gray-600 dark:text-gray-400 mt-4">{produto.descricao}</p>
 
           <div className="flex flex-wrap items-center gap-3 mt-6">
             <button
               onClick={() => adicionar(produto)}
-              className="bg-blue-700 text-white rounded px-6 py-3 font-bold hover:bg-blue-800"
+              disabled={esgotado}
+              className="bg-blue-700 text-white rounded px-6 py-3 font-bold hover:bg-blue-800 disabled:bg-gray-400 disabled:cursor-not-allowed"
             >
-              Adicionar ao carrinho
+              {esgotado ? "Esgotado" : "Adicionar ao carrinho"}
             </button>
 
             <button
@@ -141,15 +164,21 @@ export default function DetalheProduto() {
 
         <div className="flex flex-col lg:flex-row gap-6">
           <div className="flex-1">
-            <ListaFeedbacks lista={feedbacks} />
+            {avaliacoesReq.erro ? (
+              <MensagemErro texto={avaliacoesReq.erro} aoTentarDeNovo={avaliacoesReq.recarregar} />
+            ) : !avaliacoesReq.dados ? (
+              <Carregando texto="Carregando avaliações..." />
+            ) : (
+              <ListaFeedbacks
+                lista={avaliacoesReq.dados.itens}
+                media={produto.mediaAvaliacoes}
+                total={produto.totalAvaliacoes}
+              />
+            )}
           </div>
 
           <div className="w-full lg:w-96">
-            <FormFeedback
-              aoEnviar={(feedback) =>
-                adicionarFeedbackProduto(params.id, feedback)
-              }
-            />
+            <FormFeedback aoEnviar={avaliar} />
           </div>
         </div>
       </div>

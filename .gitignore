@@ -1,0 +1,14 @@
+# Regras que valem para o repositório inteiro (front-end e back-end).
+# Cada pasta pode ter o próprio .gitignore com regras a mais.
+
+# variáveis de ambiente com segredos (o .env.example, sem segredos, vai para o Git)
+.env
+.env.local
+.env.*.local
+!.env.example
+
+# bancos SQLite locais
+*.sqlite
+*.sqlite-journal
+*.sqlite-wal
+*.sqlite-shm

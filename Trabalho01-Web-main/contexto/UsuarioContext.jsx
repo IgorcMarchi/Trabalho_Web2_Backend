@@ -1,169 +1,104 @@
 "use client";
 
 import { createContext, useContext, useState, useEffect } from "react";
+import * as auth from "../lib/auth";
+import { EVENTO_SESSAO_EXPIRADA } from "../lib/api";
 
-// Guarda quem está logado e a lista de quem já se cadastrou.
-// Não tem banco de dados, tudo fica salvo no localStorage do navegador.
+// Guarda quem está logado.
+// Agora quem cadastra, confere a senha e emite o token (JWT) é a API.
+// O token fica num cookie httpOnly que o JavaScript não consegue ler;
+// aqui guardamos só nome, e-mail e tipo, para as telas usarem.
 const UsuarioContext = createContext();
 
-// Conta de administrador que já vem criada com o sistema.
-// Sem ela ninguém conseguiria entrar no painel na primeira vez.
-const ADMIN_PADRAO = {
-  nome: "Administrador",
-  email: "admin@tecshop.com",
-  senha: "admin123",
-  tipo: "ADMIN",
-  ativo: true,
-  dataCadastro: "01/01/2026",
-};
+// Chaves do localStorage que pertencem a quem está logado e precisam
+// sumir quando a pessoa sai da conta:
+// - carrinho: os itens que a pessoa colocou no carrinho
+const CHAVES_DA_SESSAO = ["carrinho"];
 
-function hoje() {
-  return new Date().toLocaleDateString("pt-BR");
-}
-
-// Nome do cookie de sessão. O proxy.js (que roda antes da página,
-// no servidor do Next) não consegue ler o localStorage, só cookies.
-// Por isso, além do localStorage, guardamos aqui o tipo de quem está
-// logado. Na etapa do back-end esse cookie passa a ser criado pelo
-// servidor (httpOnly, com um token), e o proxy.js continua igual.
-export const COOKIE_SESSAO = "tecshop_sessao";
-
-function salvarCookieSessao(usuario) {
-  if (usuario) {
-    // max-age em segundos: 7 dias
-    document.cookie = `${COOKIE_SESSAO}=${encodeURIComponent(usuario.tipo)}; path=/; max-age=604800; samesite=lax`;
-  } else {
-    // max-age=0 apaga o cookie
-    document.cookie = `${COOKIE_SESSAO}=; path=/; max-age=0; samesite=lax`;
-  }
-}
+// Dados que a primeira etapa guardava no navegador e agora moram no banco.
+// "usuarios" tinha até as senhas em texto puro, então limpamos de vez.
+const CHAVES_ANTIGAS = [
+  "usuarios",
+  "usuarioLogado",
+  "produtos",
+  "categorias",
+  "promocoes",
+  "pedidos",
+  "listaDesejos",
+  "feedbacksProdutos",
+  "feedbacksSite",
+  "filtrosInicio",
+];
 
 export function UsuarioProvider({ children }) {
   const [usuario, setUsuario] = useState(null);
-  const [usuarios, setUsuarios] = useState([]);
   const [carregou, setCarregou] = useState(false);
 
-  // lê o que estava salvo quando a página abre
+  // ao abrir o site (e a cada F5), pergunta ao servidor quem está logado
   useEffect(() => {
-    const listaSalva = localStorage.getItem("usuarios");
-    const logadoSalvo = localStorage.getItem("usuarioLogado");
+    CHAVES_ANTIGAS.forEach((chave) => localStorage.removeItem(chave));
 
-    if (listaSalva) {
-      setUsuarios(JSON.parse(listaSalva));
-    } else {
-      // primeira vez no site: cria a conta do administrador
-      setUsuarios([ADMIN_PADRAO]);
-    }
-
-    if (logadoSalvo) {
-      setUsuario(JSON.parse(logadoSalvo));
-    }
-
-    setCarregou(true);
+    auth
+      .buscarSessao()
+      .then(setUsuario)
+      .catch(() => setUsuario(null))
+      .finally(() => setCarregou(true));
   }, []);
 
-  // salva a lista de cadastrados
+  // a API avisou que o token venceu (1 hora): volta a ser visitante
   useEffect(() => {
-    if (carregou) {
-      localStorage.setItem("usuarios", JSON.stringify(usuarios));
+    function aoExpirar() {
+      setUsuario(null);
     }
-  }, [usuarios, carregou]);
 
-  // salva quem está logado (no localStorage e no cookie de sessão).
-  // Como roda toda vez que o usuário muda, o cookie fica sempre
-  // sincronizado com o localStorage: login, cadastro e logout.
-  useEffect(() => {
-    if (carregou) {
-      if (usuario) {
-        localStorage.setItem("usuarioLogado", JSON.stringify(usuario));
-      } else {
-        localStorage.removeItem("usuarioLogado");
-      }
-
-      salvarCookieSessao(usuario);
-    }
-  }, [usuario, carregou]);
+    window.addEventListener(EVENTO_SESSAO_EXPIRADA, aoExpirar);
+    return () => window.removeEventListener(EVENTO_SESSAO_EXPIRADA, aoExpirar);
+  }, []);
 
   // devolve { ok: true } quando deu certo e { ok: false, erro: "..." }
-  // quando deu errado, aí a página mostra a mensagem
-  function cadastrar(dados) {
-    const jaExiste = usuarios.find((u) => u.email === dados.email);
-
-    if (jaExiste) {
-      return { ok: false, erro: "Esse e-mail já está cadastrado" };
+  // quando deu errado, aí a página mostra a mensagem (que vem da API)
+  async function cadastrar(dados) {
+    try {
+      setUsuario(await auth.cadastrar(dados));
+      return { ok: true };
+    } catch (e) {
+      return { ok: false, erro: e.message };
     }
-
-    // quem se cadastra pelo site é sempre CLIENTE
-    const novo = {
-      nome: dados.nome,
-      email: dados.email,
-      senha: dados.senha,
-      tipo: "CLIENTE",
-      ativo: true,
-      dataCadastro: hoje(),
-    };
-
-    setUsuarios([...usuarios, novo]);
-    // o cookie é gravado na hora (e não só no useEffect) porque a página
-    // já navega em seguida, e o proxy.js precisa encontrá-lo
-    salvarCookieSessao(novo);
-    setUsuario(novo);
-
-    return { ok: true };
   }
 
-  function entrar(email, senha) {
-    const achou = usuarios.find((u) => u.email === email && u.senha === senha);
-
-    if (!achou) {
-      return { ok: false, erro: "E-mail ou senha incorretos" };
+  async function entrar(email, senha) {
+    try {
+      setUsuario(await auth.entrar(email, senha));
+      return { ok: true };
+    } catch (e) {
+      return { ok: false, erro: e.message };
     }
-
-    // conta desativada pelo administrador não consegue entrar
-    if (!achou.ativo) {
-      return { ok: false, erro: "Esta conta está desativada" };
-    }
-
-    // mesmo motivo do cadastrar: o cookie precisa existir antes da navegação
-    salvarCookieSessao(achou);
-    setUsuario(achou);
-
-    return { ok: true };
   }
 
-  function sair() {
-    salvarCookieSessao(null);
+  async function sair() {
+    // apaga o cookie com o token (no servidor do Next)
+    await auth.sair().catch(() => {});
+
+    // e apaga do localStorage o que era da sessão de quem estava logado.
+    // Não usamos localStorage.clear() para não apagar preferências do
+    // navegador, como o tema escuro.
+    CHAVES_DA_SESSAO.forEach((chave) => localStorage.removeItem(chave));
+
     setUsuario(null);
-  }
-
-  // usada pelo painel do administrador.
-  // repare que a senha NÃO entra na lista: o administrador nunca
-  // deve conseguir ver a senha de ninguém.
-  function listarClientes() {
-    return usuarios
-      .filter((u) => u.tipo === "CLIENTE")
-      .map((u) => ({
-        nome: u.nome,
-        email: u.email,
-        tipo: u.tipo,
-        ativo: u.ativo,
-        dataCadastro: u.dataCadastro,
-      }));
   }
 
   return (
     <UsuarioContext.Provider
       value={{
         usuario,
-        // a RotaProtegida usa o "carregou" para esperar a leitura do
-        // localStorage antes de decidir se manda a pessoa pro login.
+        // a RotaProtegida usa o "carregou" para esperar a resposta do
+        // servidor antes de decidir se manda a pessoa pro login.
         // Sem isso, quem dá F5 numa página privada seria expulso,
         // porque no primeiro render o usuario ainda é null.
         carregou,
         cadastrar,
         entrar,
         sair,
-        listarClientes,
       }}
     >
       {children}

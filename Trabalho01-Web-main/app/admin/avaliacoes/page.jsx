@@ -1,65 +1,83 @@
 "use client";
 
 import { useState } from "react";
-import { useFeedback } from "../../../contexto/FeedbackContext";
-import { useProdutos } from "../../../contexto/ProdutosContext";
+import Carregando from "../../../components/Carregando";
+import MensagemErro from "../../../components/MensagemErro";
+import Paginacao from "../../../components/Paginacao";
+import { useRequisicao } from "../../../hooks/useRequisicao";
+import {
+  listarAvaliacoes,
+  listarFeedbacks,
+  removerAvaliacao,
+  removerFeedback,
+} from "../../../lib/avaliacoes";
+import { listarTodosOsProdutos } from "../../../lib/produtos";
 
-// transforma a nota em estrelinhas, ex: 4 vira ****o
+// transforma a nota em estrelinhas, ex: 4 vira ★★★★☆
 function estrelas(nota) {
   return "★".repeat(nota) + "☆".repeat(5 - nota);
 }
 
 // Gerenciamento de avaliações (rota /admin/avaliacoes)
 export default function AdminAvaliacoes() {
-  const {
-    todasAsAvaliacoes,
-    removerFeedbackProduto,
-    feedbacksSite,
-    removerFeedbackSite,
-  } = useFeedback();
-
-  const { pegarProduto } = useProdutos();
-
   const [filtroProduto, setFiltroProduto] = useState("todos");
   const [aba, setAba] = useState("PRODUTOS");
+  const [paginaProdutos, setPaginaProdutos] = useState(1);
+  const [paginaSite, setPaginaSite] = useState(1);
+  const [erroAcao, setErroAcao] = useState("");
 
-  const avaliacoes = todasAsAvaliacoes();
-
-  // nomes dos produtos que têm avaliação, pro filtro
-  const produtosComAvaliacao = [...new Set(avaliacoes.map((a) => a.produtoId))];
-
-  const lista = avaliacoes.filter(
-    (a) => filtroProduto === "todos" || a.produtoId === filtroProduto
+  // com token de ADMIN, a API devolve também o e-mail de quem avaliou
+  const avaliacoesReq = useRequisicao(
+    () =>
+      listarAvaliacoes({
+        produtoId: filtroProduto === "todos" ? undefined : filtroProduto,
+        pagina: paginaProdutos,
+        limite: 20,
+      }),
+    [filtroProduto, paginaProdutos]
   );
+  const feedbacksReq = useRequisicao(
+    () => listarFeedbacks({ pagina: paginaSite, limite: 20 }),
+    [paginaSite]
+  );
+  const produtosReq = useRequisicao(() => listarTodosOsProdutos(), []);
 
-  function nomeDoProduto(produtoId) {
-    const produto = pegarProduto(produtoId);
-    return produto ? produto.nome : "Produto excluído (ID " + produtoId + ")";
+  async function remover(acao, recarregar) {
+    setErroAcao("");
+    try {
+      await acao();
+      recarregar();
+    } catch (e) {
+      setErroAcao(e.message);
+    }
   }
 
   function clicarExcluirProduto(avaliacao) {
-    const certeza = confirm(
-      `Remover a avaliação de ${avaliacao.nome}?`
-    );
+    const certeza = confirm(`Remover a avaliação de ${avaliacao.nome}?`);
 
     if (certeza) {
-      removerFeedbackProduto(avaliacao.produtoId, avaliacao.indice);
+      remover(() => removerAvaliacao(avaliacao.id), avaliacoesReq.recarregar);
     }
   }
 
-  function clicarExcluirSite(indice, nome) {
-    const certeza = confirm(`Remover a avaliação de ${nome}?`);
+  function clicarExcluirSite(feedback) {
+    const certeza = confirm(`Remover a avaliação de ${feedback.nome}?`);
 
     if (certeza) {
-      removerFeedbackSite(indice);
+      remover(() => removerFeedback(feedback.id), feedbacksReq.recarregar);
     }
   }
+
+  const avaliacoes = avaliacoesReq.dados;
+  const feedbacks = feedbacksReq.dados;
 
   return (
     <div>
       <h1 className="text-2xl font-bold text-gray-800 dark:text-gray-100 mb-1">Avaliações</h1>
       <p className="text-gray-500 dark:text-gray-400 text-sm mb-6">
-        {avaliacoes.length} em produtos e {feedbacksSite.length} sobre o site
+        {avaliacoes ? avaliacoes.meta.total : "..."} em produtos
+        {filtroProduto !== "todos" && " (no produto escolhido)"} e{" "}
+        {feedbacks ? feedbacks.meta.total : "..."} sobre o site
       </p>
 
       {/* abas */}
@@ -86,36 +104,49 @@ export default function AdminAvaliacoes() {
         </button>
       </div>
 
+      {erroAcao && (
+        <p className="bg-red-100 border-2 border-red-300 text-red-700 rounded p-3 mb-4">
+          {erroAcao}
+        </p>
+      )}
+
       {aba === "PRODUTOS" ? (
         <div>
           <div className="bg-white dark:bg-gray-800 border-2 border-gray-200 dark:border-gray-700 rounded-lg p-4 mb-4">
             <select
               value={filtroProduto}
-              onChange={(e) => setFiltroProduto(e.target.value)}
+              onChange={(e) => {
+                setFiltroProduto(e.target.value);
+                setPaginaProdutos(1);
+              }}
               className="w-full border-2 border-gray-200 dark:border-gray-700 rounded p-2"
             >
               <option value="todos">Todos os produtos</option>
-              {produtosComAvaliacao.map((id) => (
-                <option key={id} value={id}>
-                  {nomeDoProduto(id)}
+              {(produtosReq.dados ?? []).map((produto) => (
+                <option key={produto.id} value={produto.id}>
+                  {produto.nome}
                 </option>
               ))}
             </select>
           </div>
 
-          {lista.length === 0 ? (
+          {avaliacoesReq.erro ? (
+            <MensagemErro texto={avaliacoesReq.erro} aoTentarDeNovo={avaliacoesReq.recarregar} />
+          ) : !avaliacoes ? (
+            <Carregando texto="Carregando avaliações..." />
+          ) : avaliacoes.itens.length === 0 ? (
             <p className="text-gray-500 dark:text-gray-400">Nenhuma avaliação encontrada.</p>
           ) : (
             <div className="flex flex-col gap-2">
-              {lista.map((avaliacao) => (
+              {avaliacoes.itens.map((avaliacao) => (
                 <div
-                  key={avaliacao.produtoId + "-" + avaliacao.indice}
+                  key={avaliacao.id}
                   className="bg-white dark:bg-gray-800 border-2 border-gray-200 dark:border-gray-700 rounded-lg p-4"
                 >
                   <div className="flex flex-wrap items-start gap-3">
                     <div className="flex-1 min-w-[220px]">
                       <p className="text-xs text-blue-700 dark:text-blue-400 font-bold">
-                        {nomeDoProduto(avaliacao.produtoId)}
+                        {avaliacao.produtoNome ?? `Produto excluído (ID ${avaliacao.produtoId})`}
                       </p>
                       <p className="mt-1">
                         <span className="font-bold">{avaliacao.nome}</span>{" "}
@@ -144,37 +175,43 @@ export default function AdminAvaliacoes() {
               ))}
             </div>
           )}
+
+          {avaliacoes && <Paginacao meta={avaliacoes.meta} aoMudar={setPaginaProdutos} />}
         </div>
       ) : (
         <div>
-          {feedbacksSite.length === 0 ? (
+          {feedbacksReq.erro ? (
+            <MensagemErro texto={feedbacksReq.erro} aoTentarDeNovo={feedbacksReq.recarregar} />
+          ) : !feedbacks ? (
+            <Carregando texto="Carregando avaliações..." />
+          ) : feedbacks.itens.length === 0 ? (
             <p className="text-gray-500 dark:text-gray-400">
               Nenhuma avaliação sobre o site ainda.
             </p>
           ) : (
             <div className="flex flex-col gap-2">
-              {feedbacksSite.map((avaliacao, indice) => (
+              {feedbacks.itens.map((feedback) => (
                 <div
-                  key={indice}
+                  key={feedback.id}
                   className="bg-white dark:bg-gray-800 border-2 border-gray-200 dark:border-gray-700 rounded-lg p-4 flex flex-wrap items-start gap-3"
                 >
                   <div className="flex-1 min-w-[220px]">
                     <p>
-                      <span className="font-bold">{avaliacao.nome}</span>{" "}
+                      <span className="font-bold">{feedback.nome}</span>{" "}
                       <span className="text-orange-500">
-                        {estrelas(avaliacao.nota)}
+                        {estrelas(feedback.nota)}
                       </span>
                     </p>
-                    {avaliacao.email && (
-                      <p className="text-xs text-gray-500 dark:text-gray-400">{avaliacao.email}</p>
+                    {feedback.email && (
+                      <p className="text-xs text-gray-500 dark:text-gray-400">{feedback.email}</p>
                     )}
                     <p className="text-gray-600 dark:text-gray-400 text-sm mt-1">
-                      {avaliacao.comentario}
+                      {feedback.comentario}
                     </p>
                   </div>
 
                   <button
-                    onClick={() => clicarExcluirSite(indice, avaliacao.nome)}
+                    onClick={() => clicarExcluirSite(feedback)}
                     className="border-2 border-red-600 text-red-600 rounded px-3 py-1 text-sm font-bold hover:bg-red-50 dark:hover:bg-red-900"
                   >
                     Remover
@@ -183,6 +220,8 @@ export default function AdminAvaliacoes() {
               ))}
             </div>
           )}
+
+          {feedbacks && <Paginacao meta={feedbacks.meta} aoMudar={setPaginaSite} />}
         </div>
       )}
     </div>

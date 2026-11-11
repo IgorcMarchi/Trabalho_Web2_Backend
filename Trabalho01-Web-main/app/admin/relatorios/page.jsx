@@ -2,26 +2,15 @@
 
 import { useState } from "react";
 import GraficoBarras from "../../../components/GraficoBarras";
-import { usePedidos, CANCELADO } from "../../../contexto/PedidosContext";
-import { useProdutos } from "../../../contexto/ProdutosContext";
-import { useCategorias } from "../../../contexto/CategoriasContext";
-import { useUsuario } from "../../../contexto/UsuarioContext";
-import { precoFinal } from "../../../dados/precos";
-
-// a data do pedido fica como 02/10/2026 e o input de data usa
-// 2026-10-02. Esta função converte pra conseguir comparar.
-function paraFormatoDeComparacao(dataBr) {
-  const partes = dataBr.split("/");
-  return partes[2] + "-" + partes[1] + "-" + partes[0];
-}
+import Carregando from "../../../components/Carregando";
+import MensagemErro from "../../../components/MensagemErro";
+import { useRequisicao } from "../../../hooks/useRequisicao";
+import { buscarRelatorioVendas } from "../../../lib/relatorios";
+import { listarCategorias } from "../../../lib/categorias";
+import { listarTodosOsProdutos } from "../../../lib/produtos";
 
 // Relatórios (rota /admin/relatorios)
 export default function AdminRelatorios() {
-  const { todosPedidos } = usePedidos();
-  const { produtos, pegarProduto } = useProdutos();
-  const { categorias } = useCategorias();
-  const { listarClientes } = useUsuario();
-
   const [de, setDe] = useState("");
   const [ate, setAte] = useState("");
   const [filtroCategoria, setFiltroCategoria] = useState("todas");
@@ -34,130 +23,23 @@ export default function AdminRelatorios() {
     setFiltroProduto("todos");
   }
 
-  // pedido cancelado não conta como venda
-  const pedidosValidos = todosPedidos.filter(
-    (p) => p.statusPedido !== CANCELADO
+  // Os números são calculados no servidor (SUM/COUNT/GROUP BY no banco),
+  // com os filtros de período, categoria e produto.
+  const relatorioReq = useRequisicao(
+    () =>
+      buscarRelatorioVendas({
+        de: de || undefined,
+        ate: ate || undefined,
+        categoriaId: filtroCategoria === "todas" ? undefined : filtroCategoria,
+        produtoId: filtroProduto === "todos" ? undefined : filtroProduto,
+      }),
+    [de, ate, filtroCategoria, filtroProduto]
   );
 
-  // aplica o filtro de período
-  const pedidosDoPeriodo = pedidosValidos.filter((pedido) => {
-    const data = paraFormatoDeComparacao(pedido.data);
+  const categoriasReq = useRequisicao(() => listarCategorias(), []);
+  const produtosReq = useRequisicao(() => listarTodosOsProdutos(), []);
 
-    if (de && data < de) {
-      return false;
-    }
-
-    if (ate && data > ate) {
-      return false;
-    }
-
-    return true;
-  });
-
-  // monta a lista de itens vendidos, já aplicando os filtros de
-  // categoria e de produto
-  const itensVendidos = [];
-
-  for (const pedido of pedidosDoPeriodo) {
-    for (const item of pedido.itens) {
-      if (filtroProduto !== "todos" && String(item.id) !== filtroProduto) {
-        continue;
-      }
-
-      if (filtroCategoria !== "todas" && item.categoria !== filtroCategoria) {
-        continue;
-      }
-
-      itensVendidos.push({ ...item, dataPedido: pedido.data });
-    }
-  }
-
-  // ----- os números -----
-  const totalDeVendas = pedidosDoPeriodo.length;
-
-  const faturamento = itensVendidos.reduce(
-    (soma, item) => soma + precoFinal(item) * item.quantidade,
-    0
-  );
-
-  const pecasVendidas = itensVendidos.reduce(
-    (soma, item) => soma + item.quantidade,
-    0
-  );
-
-  const ticketMedio = totalDeVendas > 0 ? faturamento / totalDeVendas : 0;
-
-  // ----- produtos mais e menos vendidos -----
-  // junta as quantidades do mesmo produto
-  const porProduto = {};
-
-  for (const item of itensVendidos) {
-    if (!porProduto[item.id]) {
-      porProduto[item.id] = { nome: item.nome, quantidade: 0 };
-    }
-    porProduto[item.id].quantidade += item.quantidade;
-  }
-
-  const ranking = Object.values(porProduto).sort(
-    (a, b) => b.quantidade - a.quantidade
-  );
-
-  const maisVendidos = ranking
-    .slice(0, 5)
-    .map((p) => ({ rotulo: p.nome, valor: p.quantidade }));
-
-  const menosVendidos = [...ranking]
-    .reverse()
-    .slice(0, 5)
-    .map((p) => ({ rotulo: p.nome, valor: p.quantidade }));
-
-  // ----- vendas por categoria -----
-  const porCategoria = {};
-
-  for (const item of itensVendidos) {
-    const chave = item.categoria || "Sem categoria";
-    if (!porCategoria[chave]) {
-      porCategoria[chave] = 0;
-    }
-    porCategoria[chave] += precoFinal(item) * item.quantidade;
-  }
-
-  const vendasPorCategoria = Object.keys(porCategoria).map((nome) => ({
-    rotulo: nome,
-    valor: porCategoria[nome],
-  }));
-
-  // ----- pedidos por data -----
-  const porData = {};
-
-  for (const pedido of pedidosDoPeriodo) {
-    if (!porData[pedido.data]) {
-      porData[pedido.data] = 0;
-    }
-    porData[pedido.data] += 1;
-  }
-
-  const pedidosPorData = Object.keys(porData).map((data) => ({
-    rotulo: data,
-    valor: porData[data],
-  }));
-
-  // ----- faturamento por data -----
-  const faturamentoPorData = {};
-
-  for (const pedido of pedidosDoPeriodo) {
-    if (!faturamentoPorData[pedido.data]) {
-      faturamentoPorData[pedido.data] = 0;
-    }
-    faturamentoPorData[pedido.data] += pedido.total;
-  }
-
-  const graficoFaturamento = Object.keys(faturamentoPorData).map((data) => ({
-    rotulo: data,
-    valor: faturamentoPorData[data],
-  }));
-
-  const clientes = listarClientes();
+  const dados = relatorioReq.dados;
 
   return (
     <div>
@@ -199,8 +81,8 @@ export default function AdminRelatorios() {
               className="w-full border-2 border-gray-200 dark:border-gray-700 rounded p-2"
             >
               <option value="todas">Todas</option>
-              {categorias.map((c) => (
-                <option key={c.id} value={c.nome}>
+              {(categoriasReq.dados ?? []).map((c) => (
+                <option key={c.id} value={c.id}>
                   {c.nome}
                 </option>
               ))}
@@ -215,7 +97,7 @@ export default function AdminRelatorios() {
               className="w-full border-2 border-gray-200 dark:border-gray-700 rounded p-2"
             >
               <option value="todos">Todos</option>
-              {produtos.map((p) => (
+              {(produtosReq.dados ?? []).map((p) => (
                 <option key={p.id} value={p.id}>
                   {p.nome}
                 </option>
@@ -232,89 +114,99 @@ export default function AdminRelatorios() {
         </button>
       </div>
 
-      {/* números gerais */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-        <div className="bg-white dark:bg-gray-800 border-2 border-gray-200 dark:border-gray-700 rounded-lg p-5">
-          <p className="text-gray-500 dark:text-gray-400 text-sm">Total de vendas</p>
-          <p className="text-3xl font-bold text-blue-700 dark:text-blue-400">{totalDeVendas}</p>
-        </div>
-        <div className="bg-white dark:bg-gray-800 border-2 border-gray-200 dark:border-gray-700 rounded-lg p-5">
-          <p className="text-gray-500 dark:text-gray-400 text-sm">Faturamento</p>
-          <p className="text-3xl font-bold text-green-700">
-            R$ {faturamento.toFixed(2)}
-          </p>
-        </div>
-        <div className="bg-white dark:bg-gray-800 border-2 border-gray-200 dark:border-gray-700 rounded-lg p-5">
-          <p className="text-gray-500 dark:text-gray-400 text-sm">Peças vendidas</p>
-          <p className="text-3xl font-bold text-orange-500">{pecasVendidas}</p>
-        </div>
-        <div className="bg-white dark:bg-gray-800 border-2 border-gray-200 dark:border-gray-700 rounded-lg p-5">
-          <p className="text-gray-500 dark:text-gray-400 text-sm">Ticket médio</p>
-          <p className="text-3xl font-bold text-blue-700 dark:text-blue-400">
-            R$ {ticketMedio.toFixed(2)}
-          </p>
-        </div>
-      </div>
+      {relatorioReq.erro && (
+        <MensagemErro texto={relatorioReq.erro} aoTentarDeNovo={relatorioReq.recarregar} />
+      )}
 
-      {/* gráficos */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <div className="bg-white dark:bg-gray-800 border-2 border-gray-200 dark:border-gray-700 rounded-lg p-5">
-          <h2 className="font-bold mb-4">Faturamento por dia</h2>
-          <GraficoBarras
-            dados={graficoFaturamento}
-            prefixo="R$ "
-            cor="bg-green-600"
-          />
-        </div>
+      {!relatorioReq.erro && !dados && <Carregando texto="Calculando relatório..." />}
 
-        <div className="bg-white dark:bg-gray-800 border-2 border-gray-200 dark:border-gray-700 rounded-lg p-5">
-          <h2 className="font-bold mb-4">Pedidos por dia</h2>
-          <GraficoBarras dados={pedidosPorData} prefixo="" cor="bg-blue-700" />
-        </div>
+      {!relatorioReq.erro && dados && (
+        <div>
+          {/* números gerais */}
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+            <div className="bg-white dark:bg-gray-800 border-2 border-gray-200 dark:border-gray-700 rounded-lg p-5">
+              <p className="text-gray-500 dark:text-gray-400 text-sm">Total de vendas</p>
+              <p className="text-3xl font-bold text-blue-700 dark:text-blue-400">{dados.totalVendas}</p>
+            </div>
+            <div className="bg-white dark:bg-gray-800 border-2 border-gray-200 dark:border-gray-700 rounded-lg p-5">
+              <p className="text-gray-500 dark:text-gray-400 text-sm">Faturamento</p>
+              <p className="text-3xl font-bold text-green-700">
+                R$ {dados.faturamento.toFixed(2)}
+              </p>
+            </div>
+            <div className="bg-white dark:bg-gray-800 border-2 border-gray-200 dark:border-gray-700 rounded-lg p-5">
+              <p className="text-gray-500 dark:text-gray-400 text-sm">Peças vendidas</p>
+              <p className="text-3xl font-bold text-orange-500">{dados.pecasVendidas}</p>
+            </div>
+            <div className="bg-white dark:bg-gray-800 border-2 border-gray-200 dark:border-gray-700 rounded-lg p-5">
+              <p className="text-gray-500 dark:text-gray-400 text-sm">Ticket médio</p>
+              <p className="text-3xl font-bold text-blue-700 dark:text-blue-400">
+                R$ {dados.ticketMedio.toFixed(2)}
+              </p>
+            </div>
+          </div>
 
-        <div className="bg-white dark:bg-gray-800 border-2 border-gray-200 dark:border-gray-700 rounded-lg p-5">
-          <h2 className="font-bold mb-4">Produtos mais vendidos</h2>
-          <GraficoBarras
-            dados={maisVendidos}
-            prefixo=""
-            cor="bg-green-600"
-          />
-        </div>
+          {/* gráficos */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            <div className="bg-white dark:bg-gray-800 border-2 border-gray-200 dark:border-gray-700 rounded-lg p-5">
+              <h2 className="font-bold mb-4">Faturamento por dia</h2>
+              <GraficoBarras
+                dados={dados.faturamentoPorDia}
+                prefixo="R$ "
+                cor="bg-green-600"
+              />
+            </div>
 
-        <div className="bg-white dark:bg-gray-800 border-2 border-gray-200 dark:border-gray-700 rounded-lg p-5">
-          <h2 className="font-bold mb-4">Produtos menos vendidos</h2>
-          <GraficoBarras
-            dados={menosVendidos}
-            prefixo=""
-            cor="bg-orange-500"
-          />
-        </div>
+            <div className="bg-white dark:bg-gray-800 border-2 border-gray-200 dark:border-gray-700 rounded-lg p-5">
+              <h2 className="font-bold mb-4">Pedidos por dia</h2>
+              <GraficoBarras dados={dados.pedidosPorDia} prefixo="" cor="bg-blue-700" />
+            </div>
 
-        <div className="bg-white dark:bg-gray-800 border-2 border-gray-200 dark:border-gray-700 rounded-lg p-5">
-          <h2 className="font-bold mb-4">Vendas por categoria</h2>
-          <GraficoBarras
-            dados={vendasPorCategoria}
-            prefixo="R$ "
-            cor="bg-indigo-600"
-          />
-        </div>
+            <div className="bg-white dark:bg-gray-800 border-2 border-gray-200 dark:border-gray-700 rounded-lg p-5">
+              <h2 className="font-bold mb-4">Produtos mais vendidos</h2>
+              <GraficoBarras
+                dados={dados.maisVendidos}
+                prefixo=""
+                cor="bg-green-600"
+              />
+            </div>
 
-        <div className="bg-white dark:bg-gray-800 border-2 border-gray-200 dark:border-gray-700 rounded-lg p-5">
-          <h2 className="font-bold mb-4">Clientes cadastrados</h2>
-          <p className="text-3xl font-bold text-blue-700 dark:text-blue-400">{clientes.length}</p>
-          <div className="mt-4 flex flex-col gap-2">
-            {clientes.slice(0, 5).map((cliente) => (
-              <div key={cliente.email} className="text-sm">
-                <span className="font-bold">{cliente.nome}</span>
-                <span className="text-gray-500 dark:text-gray-400">
-                  {" "}
-                  - cadastrado em {cliente.dataCadastro}
-                </span>
+            <div className="bg-white dark:bg-gray-800 border-2 border-gray-200 dark:border-gray-700 rounded-lg p-5">
+              <h2 className="font-bold mb-4">Produtos menos vendidos</h2>
+              <GraficoBarras
+                dados={dados.menosVendidos}
+                prefixo=""
+                cor="bg-orange-500"
+              />
+            </div>
+
+            <div className="bg-white dark:bg-gray-800 border-2 border-gray-200 dark:border-gray-700 rounded-lg p-5">
+              <h2 className="font-bold mb-4">Vendas por categoria</h2>
+              <GraficoBarras
+                dados={dados.vendasPorCategoria}
+                prefixo="R$ "
+                cor="bg-indigo-600"
+              />
+            </div>
+
+            <div className="bg-white dark:bg-gray-800 border-2 border-gray-200 dark:border-gray-700 rounded-lg p-5">
+              <h2 className="font-bold mb-4">Clientes cadastrados</h2>
+              <p className="text-3xl font-bold text-blue-700 dark:text-blue-400">{dados.clientes.total}</p>
+              <div className="mt-4 flex flex-col gap-2">
+                {dados.clientes.recentes.map((cliente) => (
+                  <div key={cliente.id} className="text-sm">
+                    <span className="font-bold">{cliente.nome}</span>
+                    <span className="text-gray-500 dark:text-gray-400">
+                      {" "}
+                      - cadastrado em {cliente.dataCadastro}
+                    </span>
+                  </div>
+                ))}
               </div>
-            ))}
+            </div>
           </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }

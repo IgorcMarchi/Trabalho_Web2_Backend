@@ -1,24 +1,29 @@
 "use client";
 
 import { useState } from "react";
-import { usePromocoes, dataDeHoje } from "../../../contexto/PromocoesContext";
-import { useProdutos } from "../../../contexto/ProdutosContext";
-import { useCategorias } from "../../../contexto/CategoriasContext";
+import Carregando from "../../../components/Carregando";
+import MensagemErro from "../../../components/MensagemErro";
+import { useRequisicao } from "../../../hooks/useRequisicao";
+import {
+  atualizarPromocao,
+  criarPromocao,
+  excluirPromocao,
+  listarPromocoes,
+} from "../../../lib/promocoes";
+import { listarTodosOsProdutos } from "../../../lib/produtos";
+import { listarCategorias } from "../../../lib/categorias";
+import { dataDeHoje, diaParaBr } from "../../../lib/datas";
 
 // Gerenciamento de promoções (rota /admin/promocoes)
 export default function AdminPromocoes() {
-  const {
-    promocoes,
-    vencidas,
-    estaValendo,
-    produtosAlcancados,
-    adicionarPromocao,
-    alternarAtivaPromocao,
-    excluirPromocao,
-  } = usePromocoes();
+  // TODAS = inclusive desativadas e fora do período (só ADMIN)
+  const promocoesReq = useRequisicao(() => listarPromocoes({ situacao: "TODAS" }), []);
+  const produtosReq = useRequisicao(() => listarTodosOsProdutos(), []);
+  const categoriasReq = useRequisicao(() => listarCategorias(), []);
 
-  const { produtos } = useProdutos();
-  const { categorias } = useCategorias();
+  const promocoes = promocoesReq.dados ?? [];
+  const produtos = produtosReq.dados ?? [];
+  const categorias = categoriasReq.dados ?? [];
 
   // os campos do formulário
   const [nome, setNome] = useState("");
@@ -27,13 +32,34 @@ export default function AdminPromocoes() {
   const [dataInicio, setDataInicio] = useState(dataDeHoje());
   const [dataFim, setDataFim] = useState("");
   const [alvo, setAlvo] = useState("CATEGORIA");
-  const [alvoValor, setAlvoValor] = useState("");
+  const [alvoId, setAlvoId] = useState("");
   const [erro, setErro] = useState("");
+  const [salvando, setSalvando] = useState(false);
 
-  function criar(evento) {
+  // promoções que já venceram mas ainda estão marcadas como ativas
+  const vencidas = promocoes.filter((p) => p.ativa && p.dataFim < dataDeHoje());
+
+  async function executar(acao) {
+    setErro("");
+    setSalvando(true);
+    try {
+      await acao();
+      promocoesReq.recarregar();
+      return true;
+    } catch (e) {
+      setErro(e.message);
+      return false;
+    } finally {
+      setSalvando(false);
+    }
+  }
+
+  async function criar(evento) {
     evento.preventDefault();
     setErro("");
 
+    // conferências rápidas para avisar antes de ir ao servidor
+    // (a API confere tudo de novo e devolve 400/422 se algo escapar)
     if (nome.trim().length < 3) {
       setErro("O nome da promoção precisa ter pelo menos 3 letras");
       return;
@@ -49,7 +75,7 @@ export default function AdminPromocoes() {
       return;
     }
 
-    if (!alvoValor) {
+    if (!alvoId) {
       setErro("Escolha a qual produto ou categoria a promoção se aplica");
       return;
     }
@@ -59,30 +85,38 @@ export default function AdminPromocoes() {
       return;
     }
 
-    adicionarPromocao({
-      nome: nome.trim(),
-      tipo: tipo,
-      valor: Number(valor),
-      dataInicio: dataInicio,
-      dataFim: dataFim,
-      alvo: alvo,
-      alvoValor: alvoValor,
-      ativa: true,
-    });
+    const criou = await executar(() =>
+      criarPromocao({
+        nome: nome.trim(),
+        tipo: tipo,
+        valor: Number(valor),
+        dataInicio: dataInicio,
+        dataFim: dataFim,
+        alvo: alvo,
+        ...(alvo === "CATEGORIA"
+          ? { categoriaId: Number(alvoId) }
+          : { produtoId: Number(alvoId) }),
+        ativa: true,
+      })
+    );
 
-    setNome("");
-    setValor("");
-    setAlvoValor("");
-    setDataFim("");
+    if (criou) {
+      setNome("");
+      setValor("");
+      setAlvoId("");
+      setDataFim("");
+    }
   }
 
   function clicarExcluir(promocao) {
     const certeza = confirm(`Excluir a promoção "${promocao.nome}"?`);
 
     if (certeza) {
-      excluirPromocao(promocao.id);
+      executar(() => excluirPromocao(promocao.id));
     }
   }
+
+  const erroLista = promocoesReq.erro || produtosReq.erro || categoriasReq.erro;
 
   return (
     <div>
@@ -176,7 +210,7 @@ export default function AdminPromocoes() {
               value={alvo}
               onChange={(e) => {
                 setAlvo(e.target.value);
-                setAlvoValor("");
+                setAlvoId("");
               }}
               className="w-full border-2 border-gray-200 dark:border-gray-700 rounded p-2"
             >
@@ -190,14 +224,14 @@ export default function AdminPromocoes() {
               {alvo === "CATEGORIA" ? "Qual categoria" : "Qual produto"}
             </label>
             <select
-              value={alvoValor}
-              onChange={(e) => setAlvoValor(e.target.value)}
+              value={alvoId}
+              onChange={(e) => setAlvoId(e.target.value)}
               className="w-full border-2 border-gray-200 dark:border-gray-700 rounded p-2"
             >
               <option value="">Escolha</option>
               {alvo === "CATEGORIA"
                 ? categorias.map((c) => (
-                    <option key={c.id} value={c.nome}>
+                    <option key={c.id} value={c.id}>
                       {c.nome}
                     </option>
                   ))
@@ -212,77 +246,88 @@ export default function AdminPromocoes() {
 
         <button
           type="submit"
-          className="mt-5 bg-blue-700 text-white rounded px-6 py-3 font-bold hover:bg-blue-800"
+          disabled={salvando}
+          className="mt-5 bg-blue-700 text-white rounded px-6 py-3 font-bold hover:bg-blue-800 disabled:opacity-60"
         >
-          Criar promoção
+          {salvando ? "Salvando..." : "Criar promoção"}
         </button>
       </form>
 
-      {promocoes.length === 0 ? (
+      {erroLista ? (
+        <MensagemErro
+          texto={erroLista}
+          aoTentarDeNovo={() => {
+            promocoesReq.recarregar();
+            produtosReq.recarregar();
+            categoriasReq.recarregar();
+          }}
+        />
+      ) : !promocoesReq.dados ? (
+        <Carregando texto="Carregando promoções..." />
+      ) : promocoes.length === 0 ? (
         <p className="text-gray-500 dark:text-gray-400">Nenhuma promoção cadastrada.</p>
       ) : (
         <div className="flex flex-col gap-2">
-          {promocoes.map((promocao) => {
-            const valendo = estaValendo(promocao);
-            const quantos = produtosAlcancados(promocao).length;
-
-            return (
-              <div
-                key={promocao.id}
-                className="bg-white dark:bg-gray-800 border-2 border-gray-200 dark:border-gray-700 rounded-lg p-4 flex flex-wrap items-center gap-3"
-              >
-                <div className="flex-1 min-w-[200px]">
-                  <p className="font-bold">{promocao.nome}</p>
-                  <p className="text-xs text-gray-500 dark:text-gray-400">
-                    {promocao.tipo === "PORCENTAGEM"
-                      ? `${promocao.valor}% de desconto`
-                      : `R$ ${promocao.valor.toFixed(2)} de desconto`}{" "}
-                    em {promocao.alvo === "CATEGORIA" ? "" : "1 produto: "}
-                    {promocao.alvo === "CATEGORIA" ? promocao.alvoValor : ""}
-                    {" - "}
-                    {quantos} produto(s)
-                  </p>
-                </div>
-
-                <div className="text-sm text-gray-600 dark:text-gray-400 min-w-[160px]">
-                  <p className="text-xs">
-                    De {promocao.dataInicio} até {promocao.dataFim}
-                  </p>
-                </div>
-
-                <span
-                  className={
-                    valendo
-                      ? "bg-green-100 text-green-700 text-xs font-bold px-2 py-1 rounded"
-                      : promocao.ativa
-                      ? "bg-yellow-100 text-yellow-800 text-xs font-bold px-2 py-1 rounded"
-                      : "bg-gray-200 dark:bg-gray-600 text-gray-600 dark:text-gray-400 text-xs font-bold px-2 py-1 rounded"
-                  }
-                >
-                  {valendo
-                    ? "VALENDO AGORA"
-                    : promocao.ativa
-                    ? "FORA DO PERÍODO"
-                    : "DESATIVADA"}
-                </span>
-
-                <div className="flex gap-2">
-                  <button
-                    onClick={() => alternarAtivaPromocao(promocao.id)}
-                    className="border-2 border-gray-300 dark:border-gray-600 rounded px-3 py-1 text-sm font-bold hover:bg-gray-100 dark:hover:bg-gray-700"
-                  >
-                    {promocao.ativa ? "Desativar" : "Ativar"}
-                  </button>
-                  <button
-                    onClick={() => clicarExcluir(promocao)}
-                    className="border-2 border-red-600 text-red-600 rounded px-3 py-1 text-sm font-bold hover:bg-red-50 dark:hover:bg-red-900"
-                  >
-                    Excluir
-                  </button>
-                </div>
+          {promocoes.map((promocao) => (
+            <div
+              key={promocao.id}
+              className="bg-white dark:bg-gray-800 border-2 border-gray-200 dark:border-gray-700 rounded-lg p-4 flex flex-wrap items-center gap-3"
+            >
+              <div className="flex-1 min-w-[200px]">
+                <p className="font-bold">{promocao.nome}</p>
+                <p className="text-xs text-gray-500 dark:text-gray-400">
+                  {promocao.tipo === "PORCENTAGEM"
+                    ? `${promocao.valor}% de desconto`
+                    : `R$ ${promocao.valor.toFixed(2)} de desconto`}{" "}
+                  em {promocao.alvo === "CATEGORIA" ? "" : "1 produto: "}
+                  {promocao.alvoNome}
+                  {" - "}
+                  {promocao.quantidadeProdutos} produto(s)
+                </p>
               </div>
-            );
-          })}
+
+              <div className="text-sm text-gray-600 dark:text-gray-400 min-w-[160px]">
+                <p className="text-xs">
+                  De {diaParaBr(promocao.dataInicio)} até {diaParaBr(promocao.dataFim)}
+                </p>
+              </div>
+
+              <span
+                className={
+                  promocao.valendo
+                    ? "bg-green-100 text-green-700 text-xs font-bold px-2 py-1 rounded"
+                    : promocao.ativa
+                    ? "bg-yellow-100 text-yellow-800 text-xs font-bold px-2 py-1 rounded"
+                    : "bg-gray-200 dark:bg-gray-600 text-gray-600 dark:text-gray-400 text-xs font-bold px-2 py-1 rounded"
+                }
+              >
+                {promocao.valendo
+                  ? "VALENDO AGORA"
+                  : promocao.ativa
+                  ? "FORA DO PERÍODO"
+                  : "DESATIVADA"}
+              </span>
+
+              <div className="flex gap-2">
+                <button
+                  onClick={() =>
+                    executar(() => atualizarPromocao(promocao.id, { ativa: !promocao.ativa }))
+                  }
+                  disabled={salvando}
+                  className="border-2 border-gray-300 dark:border-gray-600 rounded px-3 py-1 text-sm font-bold hover:bg-gray-100 dark:hover:bg-gray-700 disabled:opacity-60"
+                >
+                  {promocao.ativa ? "Desativar" : "Ativar"}
+                </button>
+                <button
+                  onClick={() => clicarExcluir(promocao)}
+                  disabled={salvando}
+                  className="border-2 border-red-600 text-red-600 rounded px-3 py-1 text-sm font-bold hover:bg-red-50 dark:hover:bg-red-900 disabled:opacity-60"
+                >
+                  Excluir
+                </button>
+              </div>
+            </div>
+          ))}
         </div>
       )}
 

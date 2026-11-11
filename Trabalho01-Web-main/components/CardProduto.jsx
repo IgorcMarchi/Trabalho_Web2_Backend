@@ -12,7 +12,7 @@ import { precoFinal, temPromocao, porcentagemDesconto } from "../dados/precos";
 // na home, na lista de produtos e na lista de desejos.
 function CardProduto({ produto }) {
   const { adicionar } = useCarrinho();
-  const { usuario } = useUsuario();
+  const { usuario, carregou } = useUsuario();
   const listaDesejos = useListaDesejos();
   const router = useRouter();
 
@@ -20,6 +20,12 @@ function CardProduto({ produto }) {
   const promocao = temPromocao(produto);
 
   function clicarCoracao() {
+    // a sessão ainda está sendo conferida no servidor: espera,
+    // senão quem está logado seria mandado para o login por engano
+    if (!carregou) {
+      return;
+    }
+
     // quem não está logado é mandado pra tela de login
     if (!usuario) {
       router.push("/login");
@@ -85,11 +91,13 @@ function CardProduto({ produto }) {
         R$ {precoFinal(produto).toFixed(2)}
       </p>
 
+      {/* o estoque vem do banco: sem unidades, não dá para adicionar */}
       <button
         onClick={() => adicionar(produto)}
-        className="mt-3 bg-blue-700 text-white rounded py-2 font-bold hover:bg-blue-800"
+        disabled={produto.estoque === 0}
+        className="mt-3 bg-blue-700 text-white rounded py-2 font-bold hover:bg-blue-800 disabled:bg-gray-400 disabled:cursor-not-allowed"
       >
-        Adicionar ao carrinho
+        {produto.estoque === 0 ? "Esgotado" : "Adicionar ao carrinho"}
       </button>
     </div>
   );

@@ -1,24 +1,33 @@
 "use client";
 
+import { useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import SeloStatus from "../../../../components/SeloStatus";
+import Carregando from "../../../../components/Carregando";
+import MensagemErro from "../../../../components/MensagemErro";
+import { useRequisicao } from "../../../../hooks/useRequisicao";
 import {
-  usePedidos,
+  buscarPedido,
+  mudarStatusPedido,
+  proximoStatus,
   STATUS_PEDIDO,
   CANCELADO,
-} from "../../../../contexto/PedidosContext";
+} from "../../../../lib/pedidos";
 import { precoFinal } from "../../../../dados/precos";
 
 // Detalhe do pedido (rota /admin/pedidos/[numero])
 export default function DetalhePedido() {
   const params = useParams();
-  const { pegarPedido, mudarStatus, cancelarPedido, proximoStatus } =
-    usePedidos();
+  const { dados: pedido, erro, statusErro, recarregar, setDados } = useRequisicao(
+    () => buscarPedido(params.numero),
+    [params.numero]
+  );
 
-  const pedido = pegarPedido(params.numero);
+  const [erroAcao, setErroAcao] = useState("");
+  const [salvando, setSalvando] = useState(false);
 
-  if (!pedido) {
+  if (statusErro === 404) {
     return (
       <div>
         <h1 className="text-2xl font-bold text-gray-800 dark:text-gray-100 mb-2">
@@ -31,13 +40,35 @@ export default function DetalhePedido() {
     );
   }
 
+  if (erro) {
+    return <MensagemErro texto={erro} aoTentarDeNovo={recarregar} />;
+  }
+
+  if (!pedido) {
+    return <Carregando texto="Carregando pedido..." />;
+  }
+
   const proximo = proximoStatus(pedido.statusPedido);
+
+  // A API confere a transição (só avança uma etapa; entregue não cancela)
+  // e, ao cancelar, devolve as unidades para o estoque.
+  async function mudarStatus(novoStatus) {
+    setErroAcao("");
+    setSalvando(true);
+    try {
+      setDados(await mudarStatusPedido(pedido.numero, novoStatus));
+    } catch (e) {
+      setErroAcao(e.message);
+    } finally {
+      setSalvando(false);
+    }
+  }
 
   function clicarCancelar() {
     const certeza = confirm(`Cancelar o pedido #${pedido.numero}?`);
 
     if (certeza) {
-      cancelarPedido(pedido.numero);
+      mudarStatus(CANCELADO);
     }
   }
 
@@ -78,7 +109,7 @@ export default function DetalhePedido() {
                   {item.quantidade}x R$ {precoFinal(item).toFixed(2)}
                 </p>
                 <p className="text-sm font-bold w-24 text-right">
-                  R$ {(precoFinal(item) * item.quantidade).toFixed(2)}
+                  R$ {item.subtotal.toFixed(2)}
                 </p>
               </div>
             ))}
@@ -111,6 +142,12 @@ export default function DetalhePedido() {
               ))}
             </div>
 
+            {erroAcao && (
+              <p className="bg-red-100 border-2 border-red-300 text-red-700 rounded p-3 mb-4 text-sm">
+                {erroAcao}
+              </p>
+            )}
+
             {pedido.statusPedido === CANCELADO ? (
               <p className="text-red-700 font-bold">
                 Este pedido foi cancelado.
@@ -119,8 +156,9 @@ export default function DetalhePedido() {
               <div className="flex flex-wrap gap-3">
                 {proximo ? (
                   <button
-                    onClick={() => mudarStatus(pedido.numero, proximo)}
-                    className="bg-blue-700 text-white rounded px-5 py-2 font-bold hover:bg-blue-800"
+                    onClick={() => mudarStatus(proximo)}
+                    disabled={salvando}
+                    className="bg-blue-700 text-white rounded px-5 py-2 font-bold hover:bg-blue-800 disabled:opacity-60"
                   >
                     Avançar para: {proximo}
                   </button>
@@ -130,12 +168,16 @@ export default function DetalhePedido() {
                   </p>
                 )}
 
-                <button
-                  onClick={clicarCancelar}
-                  className="border-2 border-red-600 text-red-600 rounded px-5 py-2 font-bold hover:bg-red-50 dark:hover:bg-red-900"
-                >
-                  Cancelar pedido
-                </button>
+                {/* pedido entregue não pode mais ser cancelado (regra da API) */}
+                {proximo && (
+                  <button
+                    onClick={clicarCancelar}
+                    disabled={salvando}
+                    className="border-2 border-red-600 text-red-600 rounded px-5 py-2 font-bold hover:bg-red-50 dark:hover:bg-red-900 disabled:opacity-60"
+                  >
+                    Cancelar pedido
+                  </button>
+                )}
               </div>
             )}
           </div>

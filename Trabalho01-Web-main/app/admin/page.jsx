@@ -3,11 +3,10 @@
 import Link from "next/link";
 import GraficoBarras from "../../components/GraficoBarras";
 import SeloStatus from "../../components/SeloStatus";
-import { useProdutos } from "../../contexto/ProdutosContext";
-import { useUsuario } from "../../contexto/UsuarioContext";
-import { usePedidos, CANCELADO } from "../../contexto/PedidosContext";
-import { useCategorias } from "../../contexto/CategoriasContext";
-import { temPromocao, precoFinal } from "../../dados/precos";
+import Carregando from "../../components/Carregando";
+import MensagemErro from "../../components/MensagemErro";
+import { useRequisicao } from "../../hooks/useRequisicao";
+import { buscarDashboard } from "../../lib/relatorios";
 
 // Cartão com um número. Recebe tudo por props pra ser reaproveitado.
 function Cartao({ titulo, valor, cor }) {
@@ -21,73 +20,18 @@ function Cartao({ titulo, valor, cor }) {
 
 // Dashboard (rota /admin)
 export default function Dashboard() {
-  const { produtos } = useProdutos();
-  const { listarClientes } = useUsuario();
-  const { todosPedidos } = usePedidos();
-  const { categorias } = useCategorias();
+  // Todos os números e gráficos vêm prontos da API (GET /relatorios/dashboard),
+  // calculados no banco a partir dos pedidos gravados. Pedido cancelado
+  // não conta como venda.
+  const { dados, erro, recarregar } = useRequisicao(() => buscarDashboard(), []);
 
-  const clientes = listarClientes();
-
-  // pedido cancelado não conta como venda
-  const vendas = todosPedidos.filter((p) => p.statusPedido !== CANCELADO);
-
-  const faturamento = vendas.reduce((soma, p) => soma + p.total, 0);
-
-  const ativos = produtos.filter((p) => p.status === "ATIVO").length;
-  const emPromocao = produtos.filter(temPromocao).length;
-
-  // os 5 pedidos mais recentes
-  const recentes = [...todosPedidos].reverse().slice(0, 5);
-
-  // ----- faturamento por dia, pro gráfico -----
-  const porData = {};
-
-  for (const pedido of vendas) {
-    if (!porData[pedido.data]) {
-      porData[pedido.data] = 0;
-    }
-    porData[pedido.data] += pedido.total;
+  if (erro) {
+    return <MensagemErro texto={erro} aoTentarDeNovo={recarregar} />;
   }
 
-  const faturamentoPorDia = Object.keys(porData).map((data) => ({
-    rotulo: data,
-    valor: porData[data],
-  }));
-
-  // ----- quantidade vendida por produto, pro gráfico -----
-  const porProduto = {};
-
-  for (const pedido of vendas) {
-    for (const item of pedido.itens) {
-      if (!porProduto[item.id]) {
-        porProduto[item.id] = { nome: item.nome, quantidade: 0 };
-      }
-      porProduto[item.id].quantidade += item.quantidade;
-    }
+  if (!dados) {
+    return <Carregando texto="Carregando o painel..." />;
   }
-
-  const maisVendidos = Object.values(porProduto)
-    .sort((a, b) => b.quantidade - a.quantidade)
-    .slice(0, 5)
-    .map((p) => ({ rotulo: p.nome, valor: p.quantidade }));
-
-  // ----- vendas por categoria -----
-  const porCategoria = {};
-
-  for (const pedido of vendas) {
-    for (const item of pedido.itens) {
-      const chave = item.categoria || "Sem categoria";
-      if (!porCategoria[chave]) {
-        porCategoria[chave] = 0;
-      }
-      porCategoria[chave] += precoFinal(item) * item.quantidade;
-    }
-  }
-
-  const vendasPorCategoria = Object.keys(porCategoria).map((nome) => ({
-    rotulo: nome,
-    valor: porCategoria[nome],
-  }));
 
   return (
     <div>
@@ -97,38 +41,38 @@ export default function Dashboard() {
       <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
         <Cartao
           titulo="Total de vendas"
-          valor={vendas.length}
+          valor={dados.totalVendas}
           cor="text-blue-700 dark:text-blue-400"
         />
         <Cartao
           titulo="Faturamento total"
-          valor={`R$ ${faturamento.toFixed(2)}`}
+          valor={`R$ ${dados.faturamento.toFixed(2)}`}
           cor="text-green-700"
         />
         <Cartao
           titulo="Pedidos (com cancelados)"
-          valor={todosPedidos.length}
+          valor={dados.totalPedidos}
           cor="text-gray-700 dark:text-gray-300"
         />
         <Cartao
           titulo="Clientes cadastrados"
-          valor={clientes.length}
+          valor={dados.clientes}
           cor="text-blue-700 dark:text-blue-400"
         />
         <Cartao
           titulo="Produtos cadastrados"
-          valor={produtos.length}
+          valor={dados.produtos}
           cor="text-blue-700 dark:text-blue-400"
         />
         <Cartao
           titulo="Categorias"
-          valor={categorias.length}
+          valor={dados.categorias}
           cor="text-indigo-600"
         />
-        <Cartao titulo="Produtos ativos" valor={ativos} cor="text-green-700" />
+        <Cartao titulo="Produtos ativos" valor={dados.produtosAtivos} cor="text-green-700" />
         <Cartao
           titulo="Em promoção"
-          valor={emPromocao}
+          valor={dados.emPromocao}
           cor="text-orange-500"
         />
       </div>
@@ -138,7 +82,7 @@ export default function Dashboard() {
         <div className="bg-white dark:bg-gray-800 border-2 border-gray-200 dark:border-gray-700 rounded-lg p-5">
           <h2 className="font-bold mb-4">Faturamento por dia</h2>
           <GraficoBarras
-            dados={faturamentoPorDia}
+            dados={dados.faturamentoPorDia}
             prefixo="R$ "
             cor="bg-green-600"
           />
@@ -146,13 +90,13 @@ export default function Dashboard() {
 
         <div className="bg-white dark:bg-gray-800 border-2 border-gray-200 dark:border-gray-700 rounded-lg p-5">
           <h2 className="font-bold mb-4">Produtos mais vendidos</h2>
-          <GraficoBarras dados={maisVendidos} prefixo="" cor="bg-blue-700" />
+          <GraficoBarras dados={dados.maisVendidos} prefixo="" cor="bg-blue-700" />
         </div>
 
         <div className="bg-white dark:bg-gray-800 border-2 border-gray-200 dark:border-gray-700 rounded-lg p-5">
           <h2 className="font-bold mb-4">Vendas por categoria</h2>
           <GraficoBarras
-            dados={vendasPorCategoria}
+            dados={dados.vendasPorCategoria}
             prefixo="R$ "
             cor="bg-indigo-600"
           />
@@ -171,14 +115,14 @@ export default function Dashboard() {
           </Link>
         </div>
 
-        {recentes.length === 0 ? (
+        {dados.pedidosRecentes.length === 0 ? (
           <p className="text-gray-500 dark:text-gray-400 text-sm">
             Nenhum pedido feito ainda. Faça uma compra na loja para o painel
             começar a mostrar números.
           </p>
         ) : (
           <div className="flex flex-col gap-2">
-            {recentes.map((pedido) => (
+            {dados.pedidosRecentes.map((pedido) => (
               <Link
                 key={pedido.numero}
                 href={`/admin/pedidos/${pedido.numero}`}

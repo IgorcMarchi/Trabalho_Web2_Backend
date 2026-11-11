@@ -2,33 +2,74 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { useProdutos } from "../../../contexto/ProdutosContext";
+import Carregando from "../../../components/Carregando";
+import MensagemErro from "../../../components/MensagemErro";
+import Paginacao from "../../../components/Paginacao";
+import { useRequisicao } from "../../../hooks/useRequisicao";
+import { useDebounce } from "../../../hooks/useDebounce";
+import { atualizarProduto, excluirProduto, listarProdutos } from "../../../lib/produtos";
+import { listarCategorias } from "../../../lib/categorias";
 import { temPromocao } from "../../../dados/precos";
 
 // Lista de produtos do painel (rota /admin/produtos)
 export default function AdminProdutos() {
-  const { produtos, excluirProduto, alternarStatus } = useProdutos();
-
   const [busca, setBusca] = useState("");
   const [filtroCategoria, setFiltroCategoria] = useState("todas");
-  const [filtroStatus, setFiltroStatus] = useState("todos");
+  const [filtroStatus, setFiltroStatus] = useState("TODOS");
+  const [pagina, setPagina] = useState(1);
+  const [erroAcao, setErroAcao] = useState("");
 
-  const categorias = [...new Set(produtos.map((p) => p.categoria))];
+  const buscaAtrasada = useDebounce(busca);
 
-  // os três filtros são aplicados um depois do outro
-  const lista = produtos
-    .filter((p) => p.nome.toLowerCase().includes(busca.toLowerCase()))
-    .filter((p) => filtroCategoria === "todas" || p.categoria === filtroCategoria)
-    .filter((p) => filtroStatus === "todos" || p.status === filtroStatus);
+  // os três filtros são aplicados pela API, no banco
+  const produtosReq = useRequisicao(
+    () =>
+      listarProdutos({
+        busca: buscaAtrasada,
+        categoriaId: filtroCategoria === "todas" ? undefined : filtroCategoria,
+        status: filtroStatus,
+        pagina,
+        limite: 20,
+      }),
+    [buscaAtrasada, filtroCategoria, filtroStatus, pagina]
+  );
+
+  const categoriasReq = useRequisicao(() => listarCategorias(), []);
+  const categorias = categoriasReq.dados ?? [];
+
+  // filtro novo começa da primeira página
+  function filtrar(mudar) {
+    return (evento) => {
+      mudar(evento.target.value);
+      setPagina(1);
+    };
+  }
+
+  async function executar(acao) {
+    setErroAcao("");
+    try {
+      await acao();
+      produtosReq.recarregar();
+    } catch (e) {
+      setErroAcao(e.message);
+    }
+  }
 
   function clicarExcluir(produto) {
     // o confirm é a janelinha do próprio navegador perguntando sim ou não
     const certeza = confirm(`Excluir o produto "${produto.nome}"?`);
 
     if (certeza) {
-      excluirProduto(produto.id);
+      executar(() => excluirProduto(produto.id));
     }
   }
+
+  function alternarStatus(produto) {
+    const novoStatus = produto.status === "ATIVO" ? "INATIVO" : "ATIVO";
+    executar(() => atualizarProduto(produto.id, { status: novoStatus }));
+  }
+
+  const dados = produtosReq.dados;
 
   return (
     <div>
@@ -36,7 +77,7 @@ export default function AdminProdutos() {
         <div>
           <h1 className="text-2xl font-bold text-gray-800 dark:text-gray-100">Produtos</h1>
           <p className="text-gray-500 dark:text-gray-400 text-sm">
-            {produtos.length} cadastrado(s)
+            Catálogo da loja (dados do banco)
           </p>
         </div>
 
@@ -52,113 +93,132 @@ export default function AdminProdutos() {
       <div className="bg-white dark:bg-gray-800 border-2 border-gray-200 dark:border-gray-700 rounded-lg p-4 mb-4 flex flex-wrap gap-3">
         <input
           value={busca}
-          onChange={(e) => setBusca(e.target.value)}
+          onChange={filtrar(setBusca)}
           placeholder="Buscar pelo nome..."
           className="flex-1 min-w-[200px] border-2 border-gray-200 dark:border-gray-700 rounded p-2"
         />
 
         <select
           value={filtroCategoria}
-          onChange={(e) => setFiltroCategoria(e.target.value)}
+          onChange={filtrar(setFiltroCategoria)}
           className="border-2 border-gray-200 dark:border-gray-700 rounded p-2"
         >
           <option value="todas">Todas as categorias</option>
           {categorias.map((c) => (
-            <option key={c} value={c}>
-              {c}
+            <option key={c.id} value={c.id}>
+              {c.nome}
             </option>
           ))}
         </select>
 
         <select
           value={filtroStatus}
-          onChange={(e) => setFiltroStatus(e.target.value)}
+          onChange={filtrar(setFiltroStatus)}
           className="border-2 border-gray-200 dark:border-gray-700 rounded p-2"
         >
-          <option value="todos">Todos os status</option>
+          <option value="TODOS">Todos os status</option>
           <option value="ATIVO">Ativos</option>
           <option value="INATIVO">Inativos</option>
         </select>
       </div>
 
-      <p className="text-gray-500 dark:text-gray-400 text-sm mb-3">
-        Mostrando {lista.length} produto(s)
-      </p>
+      {erroAcao && (
+        <p className="bg-red-100 border-2 border-red-300 text-red-700 rounded p-3 mb-4">
+          {erroAcao}
+        </p>
+      )}
 
-      {lista.length === 0 ? (
-        <p className="text-gray-500 dark:text-gray-400">Nenhum produto encontrado.</p>
-      ) : (
-        <div className="flex flex-col gap-2">
-          {lista.map((produto) => (
-            <div
-              key={produto.id}
-              className="bg-white dark:bg-gray-800 border-2 border-gray-200 dark:border-gray-700 rounded-lg p-3 flex flex-wrap items-center gap-3"
-            >
-              <img
-                src={produto.imagem}
-                alt={produto.nome}
-                className="h-14 w-14 object-contain bg-white rounded"
-              />
+      {produtosReq.erro && (
+        <MensagemErro texto={produtosReq.erro} aoTentarDeNovo={produtosReq.recarregar} />
+      )}
 
-              <div className="flex-1 min-w-[180px]">
-                <p className="font-bold text-sm line-clamp-1">{produto.nome}</p>
-                <p className="text-xs text-gray-500 dark:text-gray-400">
-                  ID {produto.id} - {produto.categoria} - cadastrado em{" "}
-                  {produto.dataCadastro}
-                </p>
-              </div>
+      {!produtosReq.erro && !dados && <Carregando />}
 
-              <div className="text-right min-w-[110px]">
-                {temPromocao(produto) ? (
-                  <div>
-                    <p className="text-gray-400 text-xs line-through">
-                      R$ {produto.preco.toFixed(2)}
-                    </p>
-                    <p className="text-green-700 font-bold">
-                      R$ {produto.precoPromocional.toFixed(2)}
+      {!produtosReq.erro && dados && (
+        <div>
+          <p className="text-gray-500 dark:text-gray-400 text-sm mb-3">
+            Mostrando {dados.itens.length} de {dados.meta.total} produto(s)
+            {produtosReq.carregando && " - atualizando..."}
+          </p>
+
+          {dados.itens.length === 0 ? (
+            <p className="text-gray-500 dark:text-gray-400">Nenhum produto encontrado.</p>
+          ) : (
+            <div className="flex flex-col gap-2">
+              {dados.itens.map((produto) => (
+                <div
+                  key={produto.id}
+                  className="bg-white dark:bg-gray-800 border-2 border-gray-200 dark:border-gray-700 rounded-lg p-3 flex flex-wrap items-center gap-3"
+                >
+                  <img
+                    src={produto.imagem}
+                    alt={produto.nome}
+                    className="h-14 w-14 object-contain bg-white rounded"
+                  />
+
+                  <div className="flex-1 min-w-[180px]">
+                    <p className="font-bold text-sm line-clamp-1">{produto.nome}</p>
+                    <p className="text-xs text-gray-500 dark:text-gray-400">
+                      ID {produto.id} - {produto.categoria} - {produto.estoque} em
+                      estoque - cadastrado em {produto.dataCadastro}
                     </p>
                   </div>
-                ) : (
-                  <p className="text-green-700 font-bold">
-                    R$ {produto.preco.toFixed(2)}
-                  </p>
-                )}
-              </div>
 
-              <span
-                className={
-                  produto.status === "ATIVO"
-                    ? "bg-green-100 text-green-700 text-xs font-bold px-2 py-1 rounded"
-                    : "bg-gray-200 dark:bg-gray-600 text-gray-600 dark:text-gray-400 text-xs font-bold px-2 py-1 rounded"
-                }
-              >
-                {produto.status}
-              </span>
+                  <div className="text-right min-w-[110px]">
+                    {temPromocao(produto) ? (
+                      <div>
+                        <p className="text-gray-400 text-xs line-through">
+                          R$ {produto.preco.toFixed(2)}
+                        </p>
+                        <p className="text-green-700 font-bold">
+                          R$ {produto.precoPromocional.toFixed(2)}
+                        </p>
+                      </div>
+                    ) : (
+                      <p className="text-green-700 font-bold">
+                        R$ {produto.preco.toFixed(2)}
+                      </p>
+                    )}
+                  </div>
 
-              <div className="flex gap-2">
-                <Link
-                  href={`/admin/produtos/${produto.id}`}
-                  className="border-2 border-blue-700 text-blue-700 dark:text-blue-400 rounded px-3 py-1 text-sm font-bold hover:bg-blue-50 dark:hover:bg-blue-900"
-                >
-                  Editar
-                </Link>
+                  <span
+                    className={
+                      produto.status === "ATIVO"
+                        ? "bg-green-100 text-green-700 text-xs font-bold px-2 py-1 rounded"
+                        : "bg-gray-200 dark:bg-gray-600 text-gray-600 dark:text-gray-400 text-xs font-bold px-2 py-1 rounded"
+                    }
+                  >
+                    {produto.status}
+                  </span>
 
-                <button
-                  onClick={() => alternarStatus(produto.id)}
-                  className="border-2 border-gray-300 dark:border-gray-600 rounded px-3 py-1 text-sm font-bold hover:bg-gray-100 dark:hover:bg-gray-700"
-                >
-                  {produto.status === "ATIVO" ? "Desativar" : "Ativar"}
-                </button>
+                  <div className="flex gap-2">
+                    <Link
+                      href={`/admin/produtos/${produto.id}`}
+                      className="border-2 border-blue-700 text-blue-700 dark:text-blue-400 rounded px-3 py-1 text-sm font-bold hover:bg-blue-50 dark:hover:bg-blue-900"
+                    >
+                      Editar
+                    </Link>
 
-                <button
-                  onClick={() => clicarExcluir(produto)}
-                  className="border-2 border-red-600 text-red-600 rounded px-3 py-1 text-sm font-bold hover:bg-red-50 dark:hover:bg-red-900"
-                >
-                  Excluir
-                </button>
-              </div>
+                    <button
+                      onClick={() => alternarStatus(produto)}
+                      className="border-2 border-gray-300 dark:border-gray-600 rounded px-3 py-1 text-sm font-bold hover:bg-gray-100 dark:hover:bg-gray-700"
+                    >
+                      {produto.status === "ATIVO" ? "Desativar" : "Ativar"}
+                    </button>
+
+                    <button
+                      onClick={() => clicarExcluir(produto)}
+                      className="border-2 border-red-600 text-red-600 rounded px-3 py-1 text-sm font-bold hover:bg-red-50 dark:hover:bg-red-900"
+                    >
+                      Excluir
+                    </button>
+                  </div>
+                </div>
+              ))}
             </div>
-          ))}
+          )}
+
+          <Paginacao meta={dados.meta} aoMudar={setPagina} />
         </div>
       )}
     </div>

@@ -4,13 +4,21 @@ import { useCarrinho } from "../contexto/CarrinhoContext";
 import { precoFinal, temPromocao, porcentagemDesconto } from "../dados/precos";
 
 // Uma linha do carrinho. Recebe o item por props.
+// Preço, estoque e o aviso de problema vêm do servidor (CarrinhoContext).
 function ItemCarrinho({ item }) {
   const { remover, mudarQuantidade } = useCarrinho();
 
   const preco = precoFinal(item);
+  const noLimiteDoEstoque = item.estoque !== undefined && item.quantidade >= item.estoque;
 
   return (
-    <div className="bg-white dark:bg-gray-800 border-2 border-gray-200 dark:border-gray-700 rounded-lg p-4 flex flex-wrap items-center gap-4">
+    <div
+      className={
+        item.disponivel === false
+          ? "bg-white dark:bg-gray-800 border-2 border-yellow-400 rounded-lg p-4 flex flex-wrap items-center gap-4"
+          : "bg-white dark:bg-gray-800 border-2 border-gray-200 dark:border-gray-700 rounded-lg p-4 flex flex-wrap items-center gap-4"
+      }
+    >
       <img
         src={item.imagem}
         alt={item.nome}
@@ -28,6 +36,10 @@ function ItemCarrinho({ item }) {
             </span>
           )}
         </div>
+
+        {item.problema && (
+          <p className="text-sm text-yellow-800 dark:text-yellow-300 font-bold mt-1">{item.problema}</p>
+        )}
       </div>
 
       <div className="flex items-center gap-2">
@@ -40,7 +52,9 @@ function ItemCarrinho({ item }) {
         <span className="w-8 text-center font-bold">{item.quantidade}</span>
         <button
           onClick={() => mudarQuantidade(item.id, item.quantidade + 1)}
-          className="bg-gray-200 dark:bg-gray-600 w-8 h-8 rounded font-bold hover:bg-gray-300 dark:hover:bg-gray-500"
+          disabled={noLimiteDoEstoque}
+          title={noLimiteDoEstoque ? "Não há mais unidades em estoque" : undefined}
+          className="bg-gray-200 dark:bg-gray-600 w-8 h-8 rounded font-bold hover:bg-gray-300 dark:hover:bg-gray-500 disabled:opacity-40 disabled:cursor-not-allowed"
         >
           +
         </button>

@@ -35,11 +35,14 @@ export default function Cadastro() {
   const {
     register,
     handleSubmit,
-    formState: { errors },
+    formState: { errors, isSubmitting },
   } = useForm({ resolver: zodResolver(schema) });
 
-  function enviar(dados) {
-    const resultado = cadastrar(dados);
+  async function enviar(dados) {
+    setErro("");
+    // a conta é criada no banco (sempre como CLIENTE, quem decide é a API).
+    // E-mail repetido volta como erro 409 com a mensagem da API.
+    const resultado = await cadastrar(dados);
 
     if (resultado.ok) {
       setAcabouDeEntrar(true);
@@ -141,9 +144,10 @@ export default function Cadastro() {
 
         <button
           type="submit"
-          className="w-full mt-6 bg-blue-700 text-white rounded py-3 font-bold hover:bg-blue-800"
+          disabled={isSubmitting}
+          className="w-full mt-6 bg-blue-700 text-white rounded py-3 font-bold hover:bg-blue-800 disabled:opacity-60"
         >
-          Cadastrar
+          {isSubmitting ? "Criando conta..." : "Cadastrar"}
         </button>
 
         <p className="text-center text-sm mt-4">

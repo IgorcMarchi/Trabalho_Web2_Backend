@@ -6,13 +6,14 @@ import RotaProtegida from "../../components/RotaProtegida";
 import { useUsuario } from "../../contexto/UsuarioContext";
 
 // Molde das páginas do painel.
-// O acesso é controlado em duas camadas:
-// 1. proxy.js: quem não tem o cookie de sessão nem chega a abrir a
-//    página, é redirecionado para /login?redirect=/admin...
-// 2. RotaProtegida apenasAdmin: no navegador, confere o usuário lido
-//    do localStorage. Sem login -> /login. Logado como cliente ->
-//    tela de "Acesso negado". Vale também para quem digita /admin
-//    direto na barra de endereço.
+// O acesso é controlado em três camadas:
+// 1. proxy.js: quem não tem um JWT válido (assinatura e validade
+//    conferidas) nem chega a abrir a página, vai para /login?redirect=/admin...
+// 2. RotaProtegida apenasAdmin: no navegador, confere o usuário da
+//    sessão. Sem login -> /login. Logado como cliente -> tela de
+//    "Acesso negado". Vale também para quem digita /admin na barra.
+// 3. A API: toda rota do painel exige papel ADMIN (PapeisGuard). Mesmo
+//    que alguém burle as duas camadas acima, recebe 403 nos dados.
 export default function AdminLayout({ children }) {
   return (
     <RotaProtegida apenasAdmin>

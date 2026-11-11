@@ -2,14 +2,24 @@
 
 import Link from "next/link";
 import CardProduto from "../../../components/CardProduto";
+import Carregando from "../../../components/Carregando";
+import MensagemErro from "../../../components/MensagemErro";
 import { useListaDesejos } from "../../../contexto/ListaDesejosContext";
 
 // Lista de desejos (rota /lista-desejos)
 export default function ListaDesejos() {
-  const { itens } = useListaDesejos();
+  const { itens, carregando, erro, recarregar } = useListaDesejos();
 
   // precisa estar logado porque cada pessoa tem a sua lista.
-  // Essa checagem agora fica no layout do grupo (privado).
+  // Essa checagem fica no layout do grupo (privado).
+
+  if (erro) {
+    return <MensagemErro texto={erro} aoTentarDeNovo={recarregar} />;
+  }
+
+  if (carregando && itens.length === 0) {
+    return <Carregando texto="Carregando sua lista de desejos..." />;
+  }
 
   if (itens.length === 0) {
     return (

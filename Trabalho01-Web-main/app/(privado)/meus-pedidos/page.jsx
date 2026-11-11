@@ -1,17 +1,36 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
 import SeloStatus from "../../../components/SeloStatus";
-import { usePedidos } from "../../../contexto/PedidosContext";
+import Carregando from "../../../components/Carregando";
+import MensagemErro from "../../../components/MensagemErro";
+import Paginacao from "../../../components/Paginacao";
+import { useRequisicao } from "../../../hooks/useRequisicao";
+import { listarMeusPedidos } from "../../../lib/pedidos";
 import { precoFinal } from "../../../dados/precos";
 
 // Histórico de pedidos do cliente (rota /meus-pedidos)
 export default function MeusPedidos() {
-  const { pedidos } = usePedidos();
+  const [pagina, setPagina] = useState(1);
+
+  // a API devolve só os pedidos do dono do token, mais novos primeiro
+  const { dados, erro, recarregar } = useRequisicao(
+    () => listarMeusPedidos({ pagina }),
+    [pagina]
+  );
 
   // a checagem de login fica no layout do grupo (privado)
 
-  if (pedidos.length === 0) {
+  if (erro) {
+    return <MensagemErro texto={erro} aoTentarDeNovo={recarregar} />;
+  }
+
+  if (!dados) {
+    return <Carregando texto="Carregando seus pedidos..." />;
+  }
+
+  if (dados.meta.total === 0) {
     return (
       <div className="text-center py-10">
         <h1 className="text-3xl font-bold text-blue-800 dark:text-blue-300 mb-2">Meus pedidos</h1>
@@ -26,20 +45,15 @@ export default function MeusPedidos() {
     );
   }
 
-  // o reverse deixa o pedido mais novo em cima.
-  // usamos o [...pedidos] pra copiar a lista antes, senão o reverse
-  // mexeria na lista original.
-  const maisNovosPrimeiro = [...pedidos].reverse();
-
   return (
     <div>
       <h1 className="text-3xl font-bold text-blue-800 dark:text-blue-300 mb-2">Meus pedidos</h1>
       <p className="text-gray-600 dark:text-gray-400 mb-6">
-        Você já fez {pedidos.length} pedido(s).
+        Você já fez {dados.meta.total} pedido(s).
       </p>
 
       <div className="flex flex-col gap-4">
-        {maisNovosPrimeiro.map((pedido) => (
+        {dados.itens.map((pedido) => (
           <div
             key={pedido.numero}
             className="bg-white dark:bg-gray-800 border-2 border-gray-200 dark:border-gray-700 rounded-lg p-5"
@@ -69,7 +83,7 @@ export default function MeusPedidos() {
                   {item.quantidade}x R$ {precoFinal(item).toFixed(2)}
                 </p>
                 <p className="text-sm font-bold w-24 text-right">
-                  R$ {(precoFinal(item) * item.quantidade).toFixed(2)}
+                  R$ {item.subtotal.toFixed(2)}
                 </p>
               </div>
             ))}
@@ -96,6 +110,8 @@ export default function MeusPedidos() {
           </div>
         ))}
       </div>
+
+      <Paginacao meta={dados.meta} aoMudar={setPagina} />
     </div>
   );
 }

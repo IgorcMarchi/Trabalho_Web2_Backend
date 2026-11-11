@@ -5,17 +5,28 @@ import CardProduto from "../../components/CardProduto";
 import Carregando from "../../components/Carregando";
 import MensagemErro from "../../components/MensagemErro";
 import BarraBusca from "../../components/BarraBusca";
-import { useProdutos } from "../../contexto/ProdutosContext";
+import Paginacao from "../../components/Paginacao";
+import { useRequisicao } from "../../hooks/useRequisicao";
+import { useDebounce } from "../../hooks/useDebounce";
+import { listarProdutos } from "../../lib/produtos";
 
 // Lista de produtos (rota /produtos)
 export default function Produtos() {
-  const { produtosAtivos, carregando, erro } = useProdutos();
   const [busca, setBusca] = useState("");
+  const [pagina, setPagina] = useState(1);
 
-  // filtra pelo que foi digitado na busca
-  const produtosFiltrados = produtosAtivos.filter((p) =>
-    p.nome.toLowerCase().includes(busca.toLowerCase())
+  // a API filtra pelo nome no banco; o debounce evita uma requisição por letra
+  const buscaAtrasada = useDebounce(busca);
+
+  const { dados, carregando, erro, recarregar } = useRequisicao(
+    () => listarProdutos({ busca: buscaAtrasada, pagina, limite: 12 }),
+    [buscaAtrasada, pagina]
   );
+
+  function mudarBusca(texto) {
+    setBusca(texto);
+    setPagina(1);
+  }
 
   return (
     <div>
@@ -24,27 +35,30 @@ export default function Produtos() {
         Nosso catálogo completo.
       </p>
 
-      {carregando && <Carregando />}
+      {erro && <MensagemErro texto={erro} aoTentarDeNovo={recarregar} />}
 
-      {erro && <MensagemErro texto={erro} />}
+      {!erro && !dados && <Carregando />}
 
-      {!carregando && !erro && (
+      {!erro && dados && (
         <div>
-          <BarraBusca valor={busca} aoMudar={setBusca} />
+          <BarraBusca valor={busca} aoMudar={mudarBusca} />
 
           <p className="text-gray-500 dark:text-gray-400 text-sm mt-3 mb-4">
-            {produtosFiltrados.length} produto(s) encontrado(s)
+            {dados.meta.total} produto(s) encontrado(s)
+            {carregando && " - atualizando..."}
           </p>
 
-          {produtosFiltrados.length === 0 ? (
+          {dados.itens.length === 0 ? (
             <p className="text-gray-500 dark:text-gray-400">Nenhum produto encontrado.</p>
           ) : (
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              {produtosFiltrados.map((produto) => (
+              {dados.itens.map((produto) => (
                 <CardProduto key={produto.id} produto={produto} />
               ))}
             </div>
           )}
+
+          <Paginacao meta={dados.meta} aoMudar={setPagina} />
         </div>
       )}
     </div>

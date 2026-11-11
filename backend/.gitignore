@@ -1,0 +1,23 @@
+# dependências e build
+node_modules/
+dist/
+coverage/
+*.tsbuildinfo
+
+# variáveis de ambiente: os segredos ficam só na máquina de cada um.
+# O .env.example (sem segredos) é o único que vai para o Git.
+.env
+.env.*
+!.env.example
+
+# banco SQLite local (criado pela API e pelo seed).
+# A "/" no começo vale só para backend/dados (src/seed/dados vai para o Git).
+/dados/
+*.sqlite
+*.sqlite-journal
+*.sqlite-wal
+*.sqlite-shm
+
+# logs e arquivos de sistema
+*.log
+.DS_Store

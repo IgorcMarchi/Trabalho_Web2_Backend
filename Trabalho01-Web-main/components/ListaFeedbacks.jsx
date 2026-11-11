@@ -6,7 +6,9 @@ function estrelas(nota) {
   return "★".repeat(nota) + "☆".repeat(5 - nota);
 }
 
-function ListaFeedbacks({ lista }) {
+// media e total são opcionais: quando a API já calculou (média de TODAS
+// as avaliações do produto, não só das que vieram na página), usamos eles.
+function ListaFeedbacks({ lista, media, total }) {
   if (lista.length === 0) {
     return (
       <p className="text-gray-500 dark:text-gray-400">
@@ -15,26 +17,27 @@ function ListaFeedbacks({ lista }) {
     );
   }
 
-  // calcula a média das notas
-  const soma = lista.reduce((total, f) => total + f.nota, 0);
-  const media = soma / lista.length;
+  // senão, calcula a média das notas da lista
+  const soma = lista.reduce((acumulado, f) => acumulado + f.nota, 0);
+  const mediaFinal = media ?? soma / lista.length;
+  const quantidade = total ?? lista.length;
 
   return (
     <div>
       <p className="mb-4">
         <span className="text-orange-500 text-xl">
-          {estrelas(Math.round(media))}
+          {estrelas(Math.round(mediaFinal))}
         </span>{" "}
-        <span className="font-bold">{media.toFixed(1)}</span>{" "}
+        <span className="font-bold">{mediaFinal.toFixed(1)}</span>{" "}
         <span className="text-gray-500 dark:text-gray-400 text-sm">
-          ({lista.length} {lista.length === 1 ? "avaliação" : "avaliações"})
+          ({quantidade} {quantidade === 1 ? "avaliação" : "avaliações"})
         </span>
       </p>
 
       <div className="flex flex-col gap-3">
         {lista.map((feedback, indice) => (
           <div
-            key={indice}
+            key={feedback.id ?? indice}
             className="bg-white dark:bg-gray-800 border-2 border-gray-200 dark:border-gray-700 rounded-lg p-4"
           >
             <div className="flex items-center gap-2">

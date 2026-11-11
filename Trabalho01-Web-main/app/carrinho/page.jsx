@@ -6,7 +6,15 @@ import { useCarrinho } from "../../contexto/CarrinhoContext";
 
 // Carrinho (rota /carrinho)
 export default function Carrinho() {
-  const { itens, total, limpar } = useCarrinho();
+  const {
+    itens,
+    total,
+    limpar,
+    verificando,
+    erroVerificacao,
+    podeFinalizar,
+    verificarDeNovo,
+  } = useCarrinho();
 
   // se não tem nada no carrinho, mostra um aviso no lugar da lista
   if (itens.length === 0) {
@@ -24,9 +32,27 @@ export default function Carrinho() {
     );
   }
 
+  const temProblema = itens.some((item) => item.disponivel === false);
+
   return (
     <div>
       <h1 className="text-3xl font-bold text-blue-800 dark:text-blue-300 mb-6">Carrinho</h1>
+
+      {erroVerificacao && (
+        <div className="bg-red-100 border-2 border-red-300 text-red-700 rounded p-3 mb-4 text-sm flex flex-wrap items-center justify-between gap-2">
+          <span>Não foi possível conferir os preços com o servidor: {erroVerificacao}</span>
+          <button onClick={verificarDeNovo} className="font-bold underline">
+            Tentar de novo
+          </button>
+        </div>
+      )}
+
+      {temProblema && (
+        <p className="bg-yellow-50 border-2 border-yellow-300 text-yellow-900 rounded p-3 mb-4 text-sm">
+          Alguns itens não podem ser comprados agora (veja o aviso em cada um).
+          Ajuste a quantidade ou remova para finalizar a compra.
+        </p>
+      )}
 
       <div className="flex flex-col gap-3">
         {itens.map((item) => (
@@ -35,9 +61,14 @@ export default function Carrinho() {
       </div>
 
       <div className="bg-white dark:bg-gray-800 border-2 border-gray-200 dark:border-gray-700 rounded-lg p-4 mt-4 flex flex-wrap items-center justify-between gap-4">
-        <p className="text-xl font-bold">
-          Total: <span className="text-green-700">R$ {total.toFixed(2)}</span>
-        </p>
+        <div>
+          <p className="text-xl font-bold">
+            Total: <span className="text-green-700">R$ {total.toFixed(2)}</span>
+          </p>
+          <p className="text-xs text-gray-500 dark:text-gray-400">
+            {verificando ? "Conferindo preços e estoque..." : "Preços conferidos com a loja."}
+          </p>
+        </div>
 
         <div className="flex gap-2">
           <button
@@ -46,12 +77,18 @@ export default function Carrinho() {
           >
             Limpar carrinho
           </button>
-          <Link
-            href="/checkout"
-            className="bg-orange-500 text-white rounded px-6 py-2 font-bold hover:bg-orange-600"
-          >
-            Finalizar compra
-          </Link>
+          {podeFinalizar ? (
+            <Link
+              href="/checkout"
+              className="bg-orange-500 text-white rounded px-6 py-2 font-bold hover:bg-orange-600"
+            >
+              Finalizar compra
+            </Link>
+          ) : (
+            <span className="bg-gray-400 text-white rounded px-6 py-2 font-bold cursor-not-allowed">
+              Finalizar compra
+            </span>
+          )}
         </div>
       </div>
     </div>

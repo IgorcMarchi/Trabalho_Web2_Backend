@@ -1,27 +1,48 @@
 "use client";
 
 import { useState } from "react";
-import { useCategorias } from "../../../contexto/CategoriasContext";
+import Carregando from "../../../components/Carregando";
+import MensagemErro from "../../../components/MensagemErro";
+import { useRequisicao } from "../../../hooks/useRequisicao";
+import {
+  atualizarCategoria,
+  criarCategoria,
+  excluirCategoria,
+  listarCategorias,
+} from "../../../lib/categorias";
 
 // Gerenciamento de categorias (rota /admin/categorias)
 export default function AdminCategorias() {
-  const {
-    categorias,
-    contarProdutos,
-    adicionarCategoria,
-    editarCategoria,
-    excluirCategoria,
-    alternarAtivaCategoria,
-  } = useCategorias();
+  // cada categoria já vem da API com quantos produtos tem
+  const { dados, erro: erroLista, recarregar } = useRequisicao(() => listarCategorias(), []);
+  const categorias = dados ?? [];
 
   const [nomeNovo, setNomeNovo] = useState("");
   const [erro, setErro] = useState("");
+  const [salvando, setSalvando] = useState(false);
 
   // guarda qual categoria está sendo editada e o texto digitado
   const [editandoId, setEditandoId] = useState(null);
   const [textoEditado, setTextoEditado] = useState("");
 
-  function criar(evento) {
+  // As regras (nome repetido, categoria com produto) quem confere é a API;
+  // aqui só mostramos a mensagem que ela devolver.
+  async function executar(acao) {
+    setErro("");
+    setSalvando(true);
+    try {
+      await acao();
+      recarregar();
+      return true;
+    } catch (e) {
+      setErro(e.message);
+      return false;
+    } finally {
+      setSalvando(false);
+    }
+  }
+
+  async function criar(evento) {
     evento.preventDefault();
     setErro("");
 
@@ -30,12 +51,8 @@ export default function AdminCategorias() {
       return;
     }
 
-    const resultado = adicionarCategoria(nomeNovo.trim());
-
-    if (resultado.ok) {
+    if (await executar(() => criarCategoria(nomeNovo.trim()))) {
       setNomeNovo("");
-    } else {
-      setErro(resultado.erro);
     }
   }
 
@@ -45,13 +62,10 @@ export default function AdminCategorias() {
     setErro("");
   }
 
-  function salvarEdicao(id) {
-    const resultado = editarCategoria(id, textoEditado.trim());
-
-    if (resultado.ok) {
+  async function salvarEdicao(id) {
+    // renomear não mexe nos produtos: eles apontam para o id da categoria
+    if (await executar(() => atualizarCategoria(id, { nome: textoEditado.trim() }))) {
       setEditandoId(null);
-    } else {
-      setErro(resultado.erro);
     }
   }
 
@@ -60,15 +74,18 @@ export default function AdminCategorias() {
 
     const certeza = confirm(`Excluir a categoria "${categoria.nome}"?`);
 
-    if (!certeza) {
-      return;
+    if (certeza) {
+      // com produtos dentro, a API responde 409 e a mensagem aparece aqui
+      executar(() => excluirCategoria(categoria.id));
     }
+  }
 
-    const resultado = excluirCategoria(categoria.id);
+  if (erroLista) {
+    return <MensagemErro texto={erroLista} aoTentarDeNovo={recarregar} />;
+  }
 
-    if (!resultado.ok) {
-      setErro(resultado.erro);
-    }
+  if (!dados) {
+    return <Carregando texto="Carregando categorias..." />;
   }
 
   return (
@@ -97,7 +114,8 @@ export default function AdminCategorias() {
         />
         <button
           type="submit"
-          className="bg-blue-700 text-white rounded px-5 py-2 font-bold hover:bg-blue-800"
+          disabled={salvando}
+          className="bg-blue-700 text-white rounded px-5 py-2 font-bold hover:bg-blue-800 disabled:opacity-60"
         >
           Criar categoria
         </button>
@@ -122,7 +140,7 @@ export default function AdminCategorias() {
                 <div className="flex-1 min-w-[200px]">
                   <p className="font-bold">{categoria.nome}</p>
                   <p className="text-xs text-gray-500 dark:text-gray-400">
-                    {contarProdutos(categoria.nome)} produto(s) nesta categoria
+                    {categoria.quantidadeProdutos} produto(s) nesta categoria
                   </p>
                 </div>
               )}
@@ -142,7 +160,8 @@ export default function AdminCategorias() {
                   <>
                     <button
                       onClick={() => salvarEdicao(categoria.id)}
-                      className="bg-blue-700 text-white rounded px-3 py-1 text-sm font-bold hover:bg-blue-800"
+                      disabled={salvando}
+                      className="bg-blue-700 text-white rounded px-3 py-1 text-sm font-bold hover:bg-blue-800 disabled:opacity-60"
                     >
                       Salvar
                     </button>
@@ -162,7 +181,11 @@ export default function AdminCategorias() {
                       Renomear
                     </button>
                     <button
-                      onClick={() => alternarAtivaCategoria(categoria.id)}
+                      onClick={() =>
+                        executar(() =>
+                          atualizarCategoria(categoria.id, { ativa: !categoria.ativa })
+                        )
+                      }
                       className="border-2 border-gray-300 dark:border-gray-600 rounded px-3 py-1 text-sm font-bold hover:bg-gray-100 dark:hover:bg-gray-700"
                     >
                       {categoria.ativa ? "Desativar" : "Ativar"}

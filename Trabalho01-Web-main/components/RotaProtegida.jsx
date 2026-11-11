@@ -8,8 +8,9 @@ import { useUsuario } from "../contexto/UsuarioContext";
 
 // Proteção das rotas privadas do lado do cliente.
 // Trabalha junto com o proxy.js: o proxy barra o acesso antes da página
-// abrir (olhando o cookie), e este componente confere de novo no
-// navegador, já com o usuário lido do localStorage.
+// abrir (conferindo o JWT do cookie), e este componente confere de novo
+// no navegador, com o usuário que a API devolveu para a sessão.
+// Quem protege os DADOS de verdade é a API (AuthGuard + PapeisGuard).
 //
 // Uso: <RotaProtegida> para qualquer usuário logado e
 //      <RotaProtegida apenasAdmin> para o painel.
@@ -27,7 +28,7 @@ function RotaProtegida({ children, apenasAdmin = false }) {
     }
   }, [carregou, usuario, caminho, router]);
 
-  // enquanto o localStorage não foi lido, ou enquanto o redirecionamento
+  // enquanto a sessão não foi conferida no servidor, ou enquanto o redirecionamento
   // acontece, não mostra nada da página privada
   if (!carregou || !usuario) {
     return <Carregando texto="Verificando acesso..." />;
