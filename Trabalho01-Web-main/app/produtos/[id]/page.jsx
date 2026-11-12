@@ -8,7 +8,7 @@ import MensagemErro from "../../../components/MensagemErro";
 import ListaFeedbacks from "../../../components/ListaFeedbacks";
 import FormFeedback from "../../../components/FormFeedback";
 import IconeCoracao from "../../../components/IconeCoracao";
-import { useCarrinho } from "../../../contexto/CarrinhoContext";
+import BotaoAdicionarCarrinho from "../../../components/BotaoAdicionarCarrinho";
 import { useUsuario } from "../../../contexto/UsuarioContext";
 import { useListaDesejos } from "../../../contexto/ListaDesejosContext";
 import { useRequisicao } from "../../../hooks/useRequisicao";
@@ -21,7 +21,6 @@ export default function DetalheProduto() {
   // pega o id que veio na URL, ex: /produtos/3 -> params.id = "3"
   const params = useParams();
   const router = useRouter();
-  const { adicionar } = useCarrinho();
   const { usuario, carregou } = useUsuario();
   const listaDesejos = useListaDesejos();
 
@@ -138,13 +137,9 @@ export default function DetalheProduto() {
           <p className="text-gray-600 dark:text-gray-400 mt-4">{produto.descricao}</p>
 
           <div className="flex flex-wrap items-center gap-3 mt-6">
-            <button
-              onClick={() => adicionar(produto)}
-              disabled={esgotado}
-              className="bg-blue-700 text-white rounded px-6 py-3 font-bold hover:bg-blue-800 disabled:bg-gray-400 disabled:cursor-not-allowed"
-            >
-              {esgotado ? "Esgotado" : "Adicionar ao carrinho"}
-            </button>
+            {/* largura mínima para o botão não encolher quando o texto
+                vira "Adicionado!" e empurrar o botão do coração */}
+            <BotaoAdicionarCarrinho produto={produto} className="px-6 py-3 min-w-60" />
 
             <button
               onClick={clicarCoracao}

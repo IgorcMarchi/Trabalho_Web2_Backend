@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import IconeCoracao from "./IconeCoracao";
-import { useCarrinho } from "../contexto/CarrinhoContext";
+import BotaoAdicionarCarrinho from "./BotaoAdicionarCarrinho";
 import { useUsuario } from "../contexto/UsuarioContext";
 import { useListaDesejos } from "../contexto/ListaDesejosContext";
 import { precoFinal, temPromocao, porcentagemDesconto } from "../dados/precos";
@@ -11,25 +11,12 @@ import { precoFinal, temPromocao, porcentagemDesconto } from "../dados/precos";
 // Card de um produto. Recebe o produto por props e é reaproveitado
 // na home, na lista de produtos e na lista de desejos.
 function CardProduto({ produto }) {
-  const { adicionar } = useCarrinho();
   const { usuario, carregou } = useUsuario();
   const listaDesejos = useListaDesejos();
   const router = useRouter();
 
   const favorito = listaDesejos.estaNaLista(produto.id);
   const promocao = temPromocao(produto);
-
-  // Na lista de desejos pode aparecer um produto que o admin desativou
-  // depois: ele continua guardado, mas não está à venda.
-  const inativo = produto.status === "INATIVO";
-  const esgotado = produto.estoque === 0;
-
-  let textoDoBotao = "Adicionar ao carrinho";
-  if (inativo) {
-    textoDoBotao = "Indisponível";
-  } else if (esgotado) {
-    textoDoBotao = "Esgotado";
-  }
 
   function clicarCoracao() {
     // a sessão ainda está sendo conferida no servidor: espera,
@@ -104,15 +91,9 @@ function CardProduto({ produto }) {
         R$ {precoFinal(produto).toFixed(2)}
       </p>
 
-      {/* o estoque e o status vêm do banco: sem unidades, ou fora de
-          venda, não dá para adicionar */}
-      <button
-        onClick={() => adicionar(produto)}
-        disabled={inativo || esgotado}
-        className="mt-3 bg-blue-700 text-white rounded py-2 font-bold hover:bg-blue-800 disabled:bg-gray-400 disabled:cursor-not-allowed"
-      >
-        {textoDoBotao}
-      </button>
+      {/* Na lista de desejos pode aparecer um produto que o admin
+          desativou depois: o botão mostra "Indisponível" e fica travado */}
+      <BotaoAdicionarCarrinho produto={produto} className="mt-3 py-2" />
     </div>
   );
 }

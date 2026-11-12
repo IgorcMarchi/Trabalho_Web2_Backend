@@ -150,17 +150,19 @@ export function CarrinhoProvider({ children }) {
     };
   }, [chaveDoConteudo, carregou, tentativa]);
 
+  // Devolve o que aconteceu, para o botão mostrar o aviso certo:
+  // "adicionado", ou o motivo de não ter mudado nada ("estoque" ou "maximo").
   function adicionar(produto) {
     // se o produto já está no carrinho, só aumenta a quantidade
     const jaEstaNoCarrinho = itens.find((item) => item.id === produto.id);
 
     if (jaEstaNoCarrinho) {
-      mudarQuantidade(produto.id, jaEstaNoCarrinho.quantidade + 1);
-      return;
+      const resultado = mudarQuantidade(produto.id, jaEstaNoCarrinho.quantidade + 1);
+      return resultado === "ok" ? "adicionado" : resultado;
     }
 
     if (produto.estoque === 0) {
-      return;
+      return "estoque";
     }
 
     // guarda só o necessário para mostrar na tela
@@ -177,6 +179,7 @@ export function CarrinhoProvider({ children }) {
         quantidade: 1,
       },
     ]);
+    return "adicionado";
   }
 
   function remover(id) {
@@ -187,16 +190,22 @@ export function CarrinhoProvider({ children }) {
     const item = itens.find((i) => i.id === id);
 
     // não deixa a quantidade ficar menor que 1, passar do estoque
-    // nem passar do limite por produto que a API aceita
-    if (!item || novaQuantidade < 1 || novaQuantidade > MAXIMO_POR_ITEM) {
-      return;
+    // nem passar do limite por produto que a API aceita.
+    // Quando não muda, devolve o motivo (o botão de adicionar usa).
+    if (!item || novaQuantidade < 1) {
+      return "invalida";
+    }
+
+    if (novaQuantidade > MAXIMO_POR_ITEM) {
+      return "maximo";
     }
 
     if (item.estoque !== undefined && novaQuantidade > item.estoque) {
-      return;
+      return "estoque";
     }
 
     setItens(itens.map((i) => (i.id === id ? { ...i, quantidade: novaQuantidade } : i)));
+    return "ok";
   }
 
   function limpar() {
